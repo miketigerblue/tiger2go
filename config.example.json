@@ -1,0 +1,24 @@
+{
+  "feeds": [
+    {
+      "name": "NVD",
+      "url": "https://nvd.nist.gov/feeds/xml/cve/misc/nvd-rss.xml",
+      "enabled": true
+    },
+    {
+      "name": "CISA",
+      "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+      "enabled": true
+    }
+  ],
+  "nvd": {
+    "api_key": "",
+    "rate_limit_ms": 6000
+  },
+  "storage": {
+    "data_dir": "./data"
+  },
+  "http": {
+    "timeout_seconds": 30
+  }
+}
