@@ -145,7 +145,7 @@ func enrichAdvisories(ctx context.Context, cfg *config.Config, log *logger.Logge
 	log.Info("Enriching advisories with CVE data...")
 
 	// Initialize clients
-	nvdClient := nvd.NewClient(cfg.NVD.APIKey, cfg.GetHTTPTimeout())
+	nvdClient := nvd.NewClient(cfg.NVD.APIKey, cfg.GetHTTPTimeout(), cfg.GetNVDRateLimit())
 	cisaClient := cisa.NewClient(cfg.GetHTTPTimeout())
 	epssClient := epss.NewClient(cfg.GetHTTPTimeout())
 

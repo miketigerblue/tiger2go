@@ -17,7 +17,7 @@ A high-performance OSINT vulnerability ingestor written in Go. `tigerfetch` aggr
 
 ### Prerequisites
 
-- Go 1.19 or higher
+- Go 1.21 or higher
 
 ### Build from Source
 

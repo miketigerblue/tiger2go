@@ -18,17 +18,19 @@ const (
 
 // Client handles interactions with the NVD API
 type Client struct {
-	apiKey     string
-	httpClient *http.Client
-	baseURL    string
+	apiKey      string
+	httpClient  *http.Client
+	baseURL     string
+	rateLimit   time.Duration
 }
 
 // NewClient creates a new NVD API client
-func NewClient(apiKey string, timeout time.Duration) *Client {
+func NewClient(apiKey string, timeout time.Duration, rateLimit time.Duration) *Client {
 	return &Client{
-		apiKey:     apiKey,
-		httpClient: &http.Client{Timeout: timeout},
-		baseURL:    nvdAPIBaseURL,
+		apiKey:      apiKey,
+		httpClient:  &http.Client{Timeout: timeout},
+		baseURL:     nvdAPIBaseURL,
+		rateLimit:   rateLimit,
 	}
 }
 
@@ -146,8 +148,10 @@ func (c *Client) GetCVEs(ctx context.Context, cveIDs []string) ([]models.CVE, er
 		}
 		cves = append(cves, *cve)
 		
-		// Rate limiting: wait between requests (NVD rate limit is 5 requests per 30 seconds without API key)
-		time.Sleep(time.Second * 6)
+		// Rate limiting: wait between requests
+		if c.rateLimit > 0 {
+			time.Sleep(c.rateLimit)
+		}
 	}
 	
 	return cves, nil

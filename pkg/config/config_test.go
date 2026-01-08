@@ -20,20 +20,25 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {
-	tmpFile := "/tmp/test-config.json"
-	defer os.Remove(tmpFile)
+	tmpFile, err := os.CreateTemp("", "test-config-*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
 
 	// Create and save config
 	cfg := DefaultConfig()
 	cfg.NVD.APIKey = "test-key"
-	cfg.Storage.DataDir = "/tmp/test-data"
+	cfg.Storage.DataDir = os.TempDir()
 
-	if err := SaveConfig(cfg, tmpFile); err != nil {
+	if err := SaveConfig(cfg, tmpPath); err != nil {
 		t.Fatalf("Failed to save config: %v", err)
 	}
 
 	// Load config
-	loadedCfg, err := LoadConfig(tmpFile)
+	loadedCfg, err := LoadConfig(tmpPath)
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
@@ -41,13 +46,13 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	if loadedCfg.NVD.APIKey != "test-key" {
 		t.Errorf("Expected API key 'test-key', got '%s'", loadedCfg.NVD.APIKey)
 	}
-	if loadedCfg.Storage.DataDir != "/tmp/test-data" {
-		t.Errorf("Expected data dir '/tmp/test-data', got '%s'", loadedCfg.Storage.DataDir)
+	if loadedCfg.Storage.DataDir != os.TempDir() {
+		t.Errorf("Expected data dir '%s', got '%s'", os.TempDir(), loadedCfg.Storage.DataDir)
 	}
 }
 
 func TestLoadConfigNonExistent(t *testing.T) {
-	cfg, err := LoadConfig("/tmp/non-existent-config.json")
+	cfg, err := LoadConfig(os.TempDir() + "/non-existent-config.json")
 	if err != nil {
 		t.Fatalf("Expected no error for non-existent file, got: %v", err)
 	}
