@@ -1,0 +1,94 @@
+version: '3.8'
+
+networks:
+  tiger2go_net:
+
+volumes:
+  tiger2go_data:
+
+services:
+  # db:
+  #   image: postgres:13
+  #   container_name: tiger2go_postgres
+  #   environment:
+  #     POSTGRES_USER: user
+  #     POSTGRES_PASSWORD: pass
+  #     POSTGRES_DB: tiger2go
+  #   volumes:
+  #     - tiger2go_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - tiger2go_net
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_ADDRESS: 0.0.0.0
+    ports:
+      - "5050:80"
+    networks:
+      - tiger2go_net
+
+  tigerfetch:
+    build: .
+    image: tigerfetch:latest
+    container_name: tigerfetch
+    environment:
+      # Map to Config struct fields (uppercase)
+      DATABASE_URL: "postgres://user:pass@host.docker.internal:5432/tiger2go?sslmode=disable"
+      INGEST_INTERVAL: "1h"
+      SERVER_BIND: "0.0.0.0:9101"
+    ports:
+      - "9101:9101"
+    networks:
+      - tiger2go_net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9091:9091"
+    depends_on:
+      - tigerfetch
+    networks:
+      - tiger2go_net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s"
+      GF_INSTALL_PLUGINS: "yesoreyeram-infinity-datasource, grafana-llm-app"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - tiger2go_net
+
+  postgrest:
+    build:
+      context: ./postgrest
+      dockerfile: Dockerfile
+    container_name: postgrest
+    environment:
+      PGRST_DB_URI: postgres://user:pass@host.docker.internal:5432/tiger2go
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: web_anon
+      PGRST_SERVER_PORT: 3000
+    ports:
+      - "3001:3000"
+    networks:
+      - tiger2go_net

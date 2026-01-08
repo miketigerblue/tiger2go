@@ -1,0 +1,401 @@
+# ----------------------------------------------------------------------
+# Global settings
+# ----------------------------------------------------------------------
+database_url    = "postgres://user:pass@db:5432/tiger2go?sslmode=disable"
+ingest_interval = "1h"                     # human‑readable (parsed by humantime_serde)
+server_bind     = "0.0.0.0:9101"           # metrics & health HTTP endpoint
+
+
+
+# NOTE(2025-12): this URL currently returns 404 HTML. Consider using a JSON
+# source instead, or update the URL to the current KEV feed location.
+#
+# [[feeds]]
+# name      = "CISA Known Exploited Vulnerabilities"
+# url       = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.xml"
+# feed_type = "vulnerability"
+# tags      = ["kev", "exploited-in-the-wild", "vulnerability-priority"]
+
+[[feeds]]
+name      = "Exploit-DB New Exploits"
+url       = "https://www.exploit-db.com/rss.xml"
+feed_type = "exploits"
+tags      = ["exploit", "poc", "weaponised"]
+
+# NOTE(2025-12): rss.packetstormsecurity.com currently serves a certificate
+# with CN=savannashire.com which does not match the hostname, so TLS validation
+# fails (both curl and reqwest).
+#
+# We disable this feed until PacketStorm fixes the cert / provides a stable RSS endpoint.
+#
+# [[feeds]]
+# name      = "Packet Storm Exploits"
+# url       = "https://rss.packetstormsecurity.com/files/"
+# feed_type = "exploits"
+# tags      = ["poc", "exploit"]
+
+# NOTE(2025-12): this URL currently returns 404 HTML. Disable until corrected.
+#
+# [[feeds]]
+# name      = "ZDI Advisory Feed"
+# url       = "https://www.zerodayinitiative.com/rss/alladvisories/"
+# feed_type = "vulnerabilities"
+# tags      = ["zero-day", "vendor-advisories"]
+
+[[feeds]]
+name      = "Google TAG Threat Blog"
+url       = "https://blog.google/threat-analysis-group/rss/"
+feed_type = "threat-intel"
+tags      = ["apt", "targeted-attacks", "google"]
+
+
+[[feeds]]
+name      = "CISA Cybersecurity Alerts"
+url       = "https://us-cert.cisa.gov/ncas/alerts.xml"
+feed_type = "official"
+licence   = "Public Domain (US Government)"
+tags      = ["threat-alerts", "vulnerabilities"]
+
+[[feeds]]
+name      = "CISA Vulnerability Advisories"
+url       = "https://www.cisa.gov/cybersecurity-advisories/all.xml"
+feed_type = "official"
+licence   = "Public Domain (US Government)"
+tags      = ["vulnerabilities", "patches"]
+
+[[feeds]]
+name      = "UK NCSC Updates"
+url       = "https://www.ncsc.gov.uk/api/1/services/v1/all-rss-feed.xml"
+feed_type = "official"
+licence   = "Open Government Licence v3.0"
+tags      = ["advisories", "guidance"]
+
+# NOTE(2025-12): This URL returns 404 + HTML app shell.
+# Disable until a working RSS/Atom endpoint is found.
+#
+# [[feeds]]
+# name      = "NCSC Threat Reports"
+# url       = "https://www.ncsc.gov.uk/api/1/services/v1/alerts-rss-feed.xml"
+# feed_type = "official"
+# tags      = ["uk", "advisories", "government"]
+
+# NOTE(2025-12): This endpoint fails with HTTP client errors (connection closed).
+# Might be an HTTP/2 / edge/proxy issue. Disable until a stable RSS endpoint is found.
+#
+# [[feeds]]
+# name      = "ACSC Alerts"
+# url       = "https://www.cyber.gov.au/alerts/rss.xml"
+# feed_type = "official"
+# tags      = ["au", "advisories"]
+
+# NOTE(2025-12): This URL returns 404 HTML.
+# Disable until corrected.
+#
+# [[feeds]]
+# name      = "CCCS Cyber Alerts"
+# url       = "https://www.cyber.gc.ca/en/rss/advisories.xml"
+# feed_type = "official"
+# tags      = ["ca", "advisories"]
+
+[[feeds]]
+name      = "JPCERT Vulnerability Notes"
+# Old URL returned 404 HTML with alternate RSS links.
+# Use the consolidated JPCERT/CC RSS:
+url       = "https://www.jpcert.or.jp/rss/jpcert-all.rdf"
+feed_type = "official"
+tags      = ["jp", "vulnerability", "advisories"]
+
+# NOTE(2025-12): Returns HTML app shell (not RSS/Atom).
+# Disable until a real feed endpoint is identified.
+#
+# [[feeds]]
+# name      = "CERT-Bund advisories"
+# url       = "https://wid.cert-bund.de/feeds/rss/advisories"
+# feed_type = "official"
+# tags      = ["de", "advisories"]
+
+[[feeds]]
+name      = "SANS Internet Storm Center Diaries"
+url       = "https://isc.sans.edu/rssfeed_full.xml"
+feed_type = "community"
+licence   = "Creative Commons BY-NC-SA 3.0 US"
+tags      = ["analysis", "daily-threat"]
+
+[[feeds]]
+name      = "CERT‑EU Security Advisories"
+url       = "https://cert.europa.eu/publications/threat-intelligence-rss"
+feed_type = "official"
+licence   = "Creative Commons BY 4.0"
+tags      = ["EU-advisories", "vulnerabilities"]
+
+[[feeds]]
+name      = "Debian Security List"
+url       = "https://www.debian.org/security/dsa-long"
+feed_type = "official"
+licence   = "Software in the Public Interest (SPI)"
+tags      = ["Debian Security", "vulnerabilities"]
+
+
+# ----------------------------------------------------------------------
+# 3. Vendor Security Advisories (Critical for Real-World SOC Work)
+# ----------------------------------------------------------------------
+
+# [[feeds]]
+# name      = "Microsoft MSRC Advisories"
+# url       = "https://api.msrc.microsoft.com/update-guide/feed"
+# feed_type = "vendor"
+# tags      = ["ms", "windows", "patch-tuesday", "vulnerabilities"]
+# NOTE: Disabled for now — requires API key and non-standard feed format.
+
+[[feeds]]
+name      = "Cisco Security Advisories"
+url       = "https://tools.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisories.xml"
+feed_type = "vendor"
+tags      = ["cisco", "networking", "zero-day"]
+
+# NOTE(2025-12): Returns 404 HTML.
+# Disable until a working Red Hat RSS endpoint is found.
+#
+# [[feeds]]
+# name      = "RedHat Security Advisories"
+# url       = "https://access.redhat.com/security/updates/rss/"
+# feed_type = "vendor"
+# tags      = ["linux", "rhel", "enterprise"]
+
+[[feeds]]
+name      = "Ubuntu Security Notices"
+url       = "https://ubuntu.com/security/notices/rss.xml"
+feed_type = "vendor"
+tags      = ["linux", "ubuntu", "patch"]
+
+# NOTE(2025-12): Returns 404 HTML (VMware content migration to Broadcom).
+# Disable until a working RSS endpoint is found.
+#
+# [[feeds]]
+# name      = "VMware Security Advisories"
+# url       = "https://www.vmware.com/security/advisories.xml"
+# feed_type = "vendor"
+# tags      = ["vmware", "virtualisation"]
+
+# NOTE(2025-12): This URL returns an HTML 404 page (content-type text/html).
+# Disable until a working RSS/Atom endpoint is found.
+#
+# [[feeds]]
+# name      = "Apple Security Updates"
+# url       = "https://support.apple.com/en-gb/feeds/security-updates"
+# feed_type = "vendor"
+# tags      = ["apple", "macos", "ios", "patch"]
+
+# [[feeds]]
+# name      = "GitHub Security Advisories"
+# url       = "https://github.com/security-advisories.atom"
+# feed_type = "vendor"
+# tags      = ["open-source", "supply-chain"]
+# NOTE: Disabled for now — Atom feed rate-limited; may cause 403s without auth.
+
+
+
+[[feeds]]
+name      = "MISP Project Blog"
+url       = "https://www.misp-project.org/feed.xml"
+feed_type = "malware"
+tags      = ["ioc", "apt", "campaign"]
+
+# [[feeds]]
+# name      = "OTX Threat Pulse Updates"
+# url       = "https://otx.alienvault.com/api/v1/pulses/subscribed"
+# feed_type = "threat-intel"
+# tags      = ["ioc", "malware", "campaign"]
+# NOTE: Disabled for now — requires API key and JSON API parsing.
+
+
+[[feeds]]
+name      = "Cisco Talos Intelligence"
+# Old URL returns 404 HTML. Use the discovered RSS endpoint.
+url       = "https://blog.talosintelligence.com/rss/"
+feed_type = "malware"
+tags      = ["apt", "campaign", "exploits"]
+
+
+# NOTE(2025-12): Google Cloud topic feed URL guess returned 404.
+# Disable until we locate the correct RSS endpoint.
+#
+# [[feeds]]
+# name      = "Mandiant Threat Intelligence"
+# url       = "https://cloud.google.com/feeds/blog/topics/threat-intelligence.xml"
+# feed_type = "malware"
+# tags      = ["apt", "actor-tracking", "dfir"]
+
+
+[[feeds]]
+name      = "Recorded Future Cyber Daily"
+url       = "https://www.recordedfuture.com/feed"
+feed_type = "threat-intel"
+tags      = ["apt", "analysis", "campaign"]
+
+[[feeds]]
+name      = "Palo Alto Unit42"
+url       = "https://unit42.paloaltonetworks.com/feed/"
+feed_type = "malware"
+tags      = ["apt", "cloud-threats", "malware"]
+
+
+[[feeds]]
+name      = "Krebs on Security"
+url       = "https://krebsonsecurity.com/feed/"
+feed_type = "analysis"
+tags      = ["journalism", "investigation", "breaches"]
+
+[[feeds]]
+name      = "BleepingComputer Security News"
+url       = "https://www.bleepingcomputer.com/feed/"
+feed_type = "news"
+tags      = ["breaches", "malware", "vulnerabilities"]
+
+[[feeds]]
+name      = "The Hacker News"
+url       = "https://feeds.feedburner.com/TheHackersNews"
+feed_type = "news"
+tags      = ["news", "malware", "breaches"]
+
+[[feeds]]
+name      = "Google Project Zero"
+url       = "https://googleprojectzero.blogspot.com/feeds/posts/default"
+feed_type = "exploits"
+tags      = ["zero-day", "browser", "research"]
+
+[[feeds]]
+name      = "SecurityWeek Breaking"
+url       = "https://feeds.feedburner.com/securityweek"
+feed_type = "news"
+tags      = ["breaches", "enterprise", "malware"]
+
+[[feeds]]
+name      = "DarkReading"
+url       = "https://www.darkreading.com/rss.xml"
+feed_type = "news"
+tags      = ["enterprise", "breaches"]
+
+
+# [[feeds]]
+# name      = "AWS Security Bulletins"
+# url       = "https://aws.amazon.com/security/security-bulletins/feed/"
+# feed_type = "cloud"
+# tags      = ["aws", "cloud", "vulnerabilities"]
+# NOTE: Disabled for now — feed occasionally malformed XML.
+
+# NOTE(2025-12): Returns 404 HTML.
+# Disable until a working TechCommunity RSS endpoint is found.
+#
+# [[feeds]]
+# name      = "Microsoft Azure Security Blog"
+# url       = "https://techcommunity.microsoft.com/plugins/custom/microsoft/o365/custom-blog-rss?board=AzureSecurity"
+# feed_type = "cloud"
+# tags      = ["azure", "cloud", "security"]
+
+# NOTE(2025-12): Google Cloud topic feed URL guess returned 404.
+# Disable until we locate the correct RSS endpoint.
+#
+# [[feeds]]
+# name      = "Google Cloud Security"
+# url       = "https://cloud.google.com/feeds/blog/topics/security.xml"
+# feed_type = "cloud"
+# tags      = ["gcp", "cloud", "breaches"]
+
+# NOTE(2025-12): URLhaus RSS URLs tested returned 404.
+# Disable until we locate the correct RSS/Atom endpoint.
+#
+# [[feeds]]
+# name      = "Abuse.ch URLhaus"
+# url       = "https://urlhaus.abuse.ch/feeds/rss/"
+# feed_type = "malware"
+# tags      = ["ioc", "urlhaus", "malware"]
+
+# [[feeds]]
+# name      = "Spamhaus DROP"
+# url       = "https://www.spamhaus.org/drop/drop.lasso"
+# feed_type = "infrastructure"
+# tags      = ["ip-blocklist", "criminal-infra"]
+# NOTE: Disabled for now — plain text format, not RSS/Atom.
+
+# NOTE(2025-12): Cloudflare bot protection (403 + "Just a moment...").
+# Not usable as a feed without browser/session.
+#
+# [[feeds]]
+# name      = "PhishTank Feed"
+# url       = "https://www.phishtank.com/phish_search.php?format=rss&active=y"
+# feed_type = "phishing"
+# tags      = ["phishing", "ioc"]
+
+[[feeds]]
+name      = "The DFIR Report"
+url       = "https://thedfirreport.com/feed/"
+feed_type = "dfir"
+tags      = ["malware", "tactics", "hunting"]
+
+# NOTE(2025-12): Returns HTML app shell, not RSS/Atom.
+# Disable until a real RSS/Atom endpoint is found.
+#
+# [[feeds]]
+# name      = "CERT-UA Advisories"
+# url       = "https://cert.gov.ua/rss"
+# feed_type = "dfir"
+# tags      = ["apt", "campaign", "ukraine"]
+
+# [[feeds]]
+# name      = "HackerOne Hacktivity"
+# url       = "https://hackerone.com/hacktivity.json"  # ingest as JSON
+# feed_type = "research"
+# tags      = ["bug-bounty", "web", "appsec"]
+# NOTE: Disabled for now — JSON format, not RSS/Atom.
+
+# NOTE(2025-12): Cloudflare bot protection (403 + "Just a moment...").
+# Not usable as a feed without browser/session.
+#
+# [[feeds]]
+# name      = "OpenBugBounty Vulnerabilities"
+# url       = "https://www.openbugbounty.org/latest.atom"
+# feed_type = "research"
+# tags      = ["bug-bounty", "xss", "web-security"]
+
+
+
+
+
+
+
+
+
+[nvd]
+enabled        = true
+poll_interval  = "1h"
+page_size      = 2000
+api_key        = "REDACTED_API_KEY"
+# Optional filters (uncomment/set as needed)
+# cpe_name       = "cpe:2.3:o:microsoft:windows_10:1607:*:*:*:*:*:*:*"
+# cve_id         = "CVE-2022-XXXXX"
+# cve_tag        = "disputed"
+# cvss_v3_severity = "HIGH"
+# no_rejected    = true
+
+[mitre]
+enabled       = true
+poll_interval = "15m"    
+
+[epss]
+enabled       = true
+poll_interval = "24h"
+url           = "https://api.first.org/data/v1/epss"
+page_size     = 5000
+
+[kev]
+enabled       = true
+poll_interval = "24h"
+url           = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+
+# ----------------------------------------------------------------------
+# Content length limits (configurable)
+# ----------------------------------------------------------------------
+[max_lengths]
+summary = 200000   # default max summary length before truncation
+content = 500000   # default max content length before truncation

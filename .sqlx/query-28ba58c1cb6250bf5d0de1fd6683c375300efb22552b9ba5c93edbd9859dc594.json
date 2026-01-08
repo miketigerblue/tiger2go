@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE archive\n        SET last_fetch_attempt = $1\n        WHERE guid = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "28ba58c1cb6250bf5d0de1fd6683c375300efb22552b9ba5c93edbd9859dc594"
+}

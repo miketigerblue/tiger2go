@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE archive\n        SET disabled = true\n        WHERE guid = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d150e6a60b1a988026a2611a7962f9cb1088b22b5b512169bcd91c5bba5bb40d"
+}
