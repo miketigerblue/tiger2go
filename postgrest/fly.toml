@@ -3,7 +3,7 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'tigerblue-postgrest'
+app = 'tiger2go-postgrest'
 primary_region = 'ams'
 
 [build]
@@ -12,7 +12,7 @@ primary_region = 'ams'
 [env]
   PGRST_DB_ANON_ROLE = 'postgrest-anon'
   PGRST_DB_SCHEMA = 'api'
-  PGRST_OPENAPI_SERVER_PROXY_URI = 'https://tigerblue-postgrest.fly.dev'
+  PGRST_OPENAPI_SERVER_PROXY_URI = 'https://tiger2go-postgrest.fly.dev'
   PGRST_SERVER_PORT = '3000'
 
 [http_service]

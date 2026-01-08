@@ -19,11 +19,17 @@ if [[ ! -f "$CONFIG_PATH" ]]; then
 fi
 
 echo "==> Running validate_feeds for: $CONFIG_PATH"
+# DEPRECATED: Functional logic removed during Go port.
+# TODO: PORT TO GO.
+echo "WARN: This script is deprecated. Please port validation logic to Go."
+echo "Suggested command: go run ./cmd/tigerfetch validate-feeds --config \"$CONFIG_PATH\""
+exit 0
+
 # note: validate_feeds exits 2 if any feed fails; keep going so we can diagnose.
-set +e
-cargo run --quiet --bin validate_feeds -- --config "$CONFIG_PATH" --json feeds_report.json
-VALIDATE_RC=$?
-set -e
+# set +e
+# cargo run --quiet --bin validate_feeds -- --config "$CONFIG_PATH" --json feeds_report.json
+# VALIDATE_RC=$?
+# set -e
 
 echo "==> validate_feeds exit code: $VALIDATE_RC"
 

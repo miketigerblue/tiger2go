@@ -30,7 +30,7 @@ All contributors (including automation) must follow these rules. I will re-read 
 ### Examples
 - `feat(ingestion): batch SQL inserts for CVE ingestion`
 - `feat(ingestion): stream ZIP + JSON parsing to reduce memory usage`
-- `chore(ci): add Cargo build cache, update SBOM output`
+- `chore(ci): update golangci-lint config, update SBOM output`
 
 ---
 
@@ -58,9 +58,10 @@ All contributors (including automation) must follow these rules. I will re-read 
 ---
 
 ## 6. Code Quality
-- Run `cargo fmt`, `cargo clippy`, and `cargo test` before committing.
-- Ensure no security advisories remain (`cargo audit` clean).
-- Add logging and error handling where appropriate.
+- Run `make all` (lint, audit, test) before committing.
+- Ensure `golangci-lint` passes with zero issues.
+- Ensure `govulncheck` returns no known vulnerabilities.
+- Add logging (slog) and context cancellation where appropriate.
 
 ---
 
