@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -52,7 +53,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 }
 
 func TestLoadConfigNonExistent(t *testing.T) {
-	cfg, err := LoadConfig(os.TempDir() + "/non-existent-config.json")
+	cfg, err := LoadConfig(filepath.Join(os.TempDir(), "non-existent-config.json"))
 	if err != nil {
 		t.Fatalf("Expected no error for non-existent file, got: %v", err)
 	}

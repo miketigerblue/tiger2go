@@ -168,13 +168,15 @@ func enrichAdvisories(ctx context.Context, cfg *config.Config, log *logger.Logge
 	var allCVEs []models.CVE
 	if len(allCVEIDs) > 0 {
 		log.Info("Fetching CVE data from NVD (this may take a while due to rate limiting)...")
-		cves, err := nvdClient.GetCVEs(ctx, allCVEIDs)
-		if err != nil {
-			log.Error("Failed to fetch CVEs from NVD: %v", err)
-		} else {
-			allCVEs = cves
-			log.Info("Fetched %d CVEs from NVD", len(allCVEs))
+		cves, errors := nvdClient.GetCVEs(ctx, allCVEIDs)
+		if len(errors) > 0 {
+			log.Error("Failed to fetch %d CVEs from NVD", len(errors))
+			for cveID, err := range errors {
+				log.Debug("Error fetching %s: %v", cveID, err)
+			}
 		}
+		allCVEs = cves
+		log.Info("Fetched %d CVEs from NVD", len(allCVEs))
 	}
 
 	// Fetch KEV data from CISA

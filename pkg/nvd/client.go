@@ -137,13 +137,15 @@ func (c *Client) GetCVE(ctx context.Context, cveID string) (*models.CVE, error) 
 }
 
 // GetCVEs fetches multiple CVEs from NVD
-func (c *Client) GetCVEs(ctx context.Context, cveIDs []string) ([]models.CVE, error) {
+// Returns the successfully fetched CVEs and a map of errors for failed CVE IDs
+func (c *Client) GetCVEs(ctx context.Context, cveIDs []string) ([]models.CVE, map[string]error) {
 	cves := make([]models.CVE, 0, len(cveIDs))
+	errors := make(map[string]error)
 	
 	for _, cveID := range cveIDs {
 		cve, err := c.GetCVE(ctx, cveID)
 		if err != nil {
-			// Log error but continue with other CVEs
+			errors[cveID] = err
 			continue
 		}
 		cves = append(cves, *cve)
@@ -154,7 +156,7 @@ func (c *Client) GetCVEs(ctx context.Context, cveIDs []string) ([]models.CVE, er
 		}
 	}
 	
-	return cves, nil
+	return cves, errors
 }
 
 func convertNVDToCVE(nvdCVE cveItem) *models.CVE {
