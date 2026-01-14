@@ -101,7 +101,7 @@ func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gof
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 3. Archive Table (Insert if not exists)
 	const archiveQuery = `

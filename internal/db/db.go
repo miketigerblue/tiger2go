@@ -45,7 +45,7 @@ func Migrate(databaseURL, migrationDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database for migration: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Ensure we can connect
 	if err := db.Ping(); err != nil {

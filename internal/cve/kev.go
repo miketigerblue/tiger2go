@@ -117,7 +117,7 @@ func (r *KevRunner) fetchCatalog(ctx context.Context, url string) (*KevCatalog, 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("status code %d", resp.StatusCode)
@@ -156,7 +156,7 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 	}
 
 	br := r.db.SendBatch(ctx, batch)
-	defer br.Close()
+	defer func() { _ = br.Close() }()
 
 	for i := 0; i < len(vulns); i++ {
 		_, err := br.Exec()

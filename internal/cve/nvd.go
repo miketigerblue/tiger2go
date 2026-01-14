@@ -174,7 +174,7 @@ func (r *NvdRunner) processWindow(ctx context.Context, start, end time.Time) err
 }
 
 func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, error) {
-	var backoff time.Duration = 6 * time.Second
+	backoff := 6 * time.Second
 
 	for {
 		req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
@@ -194,11 +194,16 @@ func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, 
 			time.Sleep(backoff)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
-			return io.ReadAll(resp.Body)
+			body, readErr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if readErr != nil {
+				return nil, readErr
+			}
+			return body, nil
 		}
+		_ = resp.Body.Close()
 
 		// Check for 429 or 503
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
@@ -232,11 +237,8 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 			modified = time.Now()
 		}
 
-		// Extract CVSS Base Score (V3.1 prefered)
-		var cvssBase *float64
-		// We need to parse the metrics raw JSON to find the base score. Note: This is a bit ugly.
-		// Structure: metrics: { "cvssMetricV31": [ { "cvssData": { "baseScore": 9.8 } } ] }
-		cvssBase = extractCvssScore(item.Cve.Metrics)
+		// Extract CVSS Base Score (V3.1 preferred)
+		cvssBase := extractCvssScore(item.Cve.Metrics)
 
 		batch.Queue(`
 			INSERT INTO cve_enriched (cve_id, source, json, cvss_base, modified)
@@ -250,7 +252,7 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 	}
 
 	br := r.db.SendBatch(ctx, batch)
-	defer br.Close()
+	defer func() { _ = br.Close() }()
 
 	for i := 0; i < len(items); i++ {
 		_, err := br.Exec()
