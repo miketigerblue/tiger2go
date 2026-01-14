@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"tiger2go/internal/config"
@@ -16,12 +17,14 @@ import (
 // TestEpssRunner_Integration requires a running DB.
 // It uses httptest to mock the upstream API.
 func TestEpssRunner_Integration(t *testing.T) {
-	// Skip if no DB connection string (optional, but good practice)
-	// For this env, we know it exists.
-	ctx := context.Background()
-	connStr := "postgres://user:pass@db:5432/tiger2go?sslmode=disable"
+	databaseURL, ok := os.LookupEnv("DATABASE_URL")
+	if !ok || databaseURL == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
 
-	pool, err := db.NewPool(ctx, connStr)
+	ctx := context.Background()
+
+	pool, err := db.NewPool(ctx, databaseURL)
 	require.NoError(t, err)
 	defer pool.Close()
 
@@ -33,7 +36,7 @@ func TestEpssRunner_Integration(t *testing.T) {
 		if offset == "0" {
 			// First page
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"status": "OK",
 				"total": 2,
 				"offset": 0,
@@ -45,7 +48,7 @@ func TestEpssRunner_Integration(t *testing.T) {
 		} else {
 			// Second page (finish)
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"status": "OK",
 				"total": 2,
 				"offset": 1,

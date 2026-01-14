@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"tiger2go/internal/config"
@@ -14,17 +15,21 @@ import (
 )
 
 func TestKevRunner_Integration(t *testing.T) {
-	ctx := context.Background()
-	connStr := "postgres://user:pass@db:5432/tiger2go?sslmode=disable"
+	databaseURL, ok := os.LookupEnv("DATABASE_URL")
+	if !ok || databaseURL == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
 
-	pool, err := db.NewPool(ctx, connStr)
+	ctx := context.Background()
+
+	pool, err := db.NewPool(ctx, databaseURL)
 	require.NoError(t, err)
 	defer pool.Close()
 
 	// 1. Mock Server
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"catalogVersion": "2099.01.01",
 			"dateReleased": "2099-01-01T00:00:00Z",
 			"count": 1,
