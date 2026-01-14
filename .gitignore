@@ -8,6 +8,9 @@ test
 out
 tigerfetch
 
+# Repo-local tooling installs (Makefile)
+bin/
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -29,13 +32,9 @@ go.work
 # Environment variables
 .env
 
-# Local config
-# Config.toml - Removing this from ignore so we track the default config structure, 
-# but usually users might have a Config.local.toml. 
-# For this repo, Config.toml seems to be the template.
-# If Config.toml contains secrets, it should be ignored.
-# The current Config.toml has dummy values for API keys.
-# We will keep Config.toml tracked for now as it is the example.
+# Local configuration (may contain secrets)
+Config.toml
+!Config.toml.example
 
 # Logs
 *.log

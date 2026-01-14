@@ -63,6 +63,11 @@ All contributors (including automation) must follow these rules. I will re-read 
 - Ensure `govulncheck` returns no known vulnerabilities.
 - Add logging (slog) and context cancellation where appropriate.
 
+Tooling notes:
+- `make all` auto-installs required Go tools into `./bin` on first run.
+- Use `make tools` to pre-install tooling, and `make tools-clean` to remove it.
+- Versions are pinned in the Makefile but can be overridden (e.g., `make GOLANGCI_LINT_VERSION=v2.8.0 lint`).
+
 ---
 
 ## 7. Documentation

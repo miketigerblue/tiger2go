@@ -1,6 +1,6 @@
 # Tiger2Go Developer Makefile
 
-.PHONY: all build run test clean lint sec audit help
+.PHONY: all build run test clean lint sec audit trivy tools tools-clean fmt coverage help
 
 # Default target
 all: lint audit test build
@@ -8,6 +8,37 @@ all: lint audit test build
 # Application
 BINARY_NAME=tigerfetch
 ENTRY_POINT=./cmd/tigerfetch
+
+# ----------------------------------------------------------------------------
+# Tooling (repo-local installs)
+# ----------------------------------------------------------------------------
+BIN_DIR ?= $(CURDIR)/bin
+GOBIN ?= $(abspath $(BIN_DIR))
+
+GOLANGCI_LINT_VERSION ?= v2.8.0
+GOVULNCHECK_VERSION ?= v1.1.4
+GOSEC_VERSION ?= v2.22.11
+
+GOLANGCI_LINT := $(BIN_DIR)/golangci-lint
+GOVULNCHECK := $(BIN_DIR)/govulncheck
+GOSEC := $(BIN_DIR)/gosec
+
+tools: $(GOLANGCI_LINT) $(GOVULNCHECK) $(GOSEC) ## Install/refresh local tooling into ./bin
+
+tools-clean: ## Remove locally installed tooling (./bin)
+	rm -rf $(BIN_DIR)
+
+$(GOLANGCI_LINT):
+	@mkdir -p $(BIN_DIR)
+	GOBIN="$(GOBIN)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+$(GOVULNCHECK):
+	@mkdir -p $(BIN_DIR)
+	GOBIN="$(GOBIN)" go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+
+$(GOSEC):
+	@mkdir -p $(BIN_DIR)
+	GOBIN="$(GOBIN)" go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 
 # -----------------------------------------------------------------------------
 # Development
@@ -33,8 +64,9 @@ coverage: ## Run tests and generate coverage report
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out
 
-lint: ## Run linter (requires golangci-lint installed)
-	golangci-lint run
+
+lint: $(GOLANGCI_LINT) ## Run linter
+	$(GOLANGCI_LINT) run
 
 fmt: ## Format code
 	go fmt ./...
@@ -42,11 +74,13 @@ fmt: ## Format code
 # -----------------------------------------------------------------------------
 # Security (DevSecOps)
 # -----------------------------------------------------------------------------
-audit: ## Run Go native vulnerability check (SCA)
-	govulncheck ./...
 
-sec: ## Run Golang Security Checker (SAST)
-	gosec ./...
+audit: $(GOVULNCHECK) build ## Run Go native vulnerability check (SCA)
+	$(GOVULNCHECK) -mode=binary ./$(BINARY_NAME)
+
+
+sec: $(GOSEC) ## Run Golang Security Checker (SAST)
+	$(GOSEC) ./...
 
 trivy: ## Build image and scan with Trivy
 	docker build -t tiger2go:local .
