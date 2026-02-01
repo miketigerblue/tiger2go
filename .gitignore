@@ -6,7 +6,7 @@
 *.dylib
 test
 out
-tigerfetch
+/tigerfetch
 
 # Repo-local tooling installs (Makefile)
 bin/

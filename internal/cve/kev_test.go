@@ -22,6 +22,10 @@ func TestKevRunner_Integration(t *testing.T) {
 
 	ctx := context.Background()
 
+	// Run migrations to set up database schema
+	err := db.Migrate(databaseURL, "../../migrations")
+	require.NoError(t, err, "failed to run migrations")
+
 	pool, err := db.NewPool(ctx, databaseURL)
 	require.NoError(t, err)
 	defer pool.Close()
