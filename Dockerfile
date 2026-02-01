@@ -37,8 +37,8 @@ COPY --from=builder /app/tigerfetch /usr/local/bin/tigerfetch
 # Copy migrations (required for the app to run them)
 COPY --chown=app:app migrations ./migrations
 
-# Copy default config
-COPY --chown=app:app Config.toml ./Config.toml
+# Note: Config.toml is optional - app uses defaults/env vars if not present
+# Config.toml is excluded in .dockerignore to prevent secrets from being included
 
 EXPOSE 9101
 ENTRYPOINT ["tigerfetch"]
