@@ -30,6 +30,8 @@ func main() {
 	}
 
 	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// Run database migrations
 	log.Println("Running database migrations...")
@@ -75,7 +77,11 @@ func main() {
 				if err := runner.Run(ctx); err != nil {
 					log.Printf("NVD runner error: %v", err)
 				}
-				interval, _ := cfg.NVD.GetPollDuration()
+				interval, err := cfg.NVD.GetPollDuration()
+				if err != nil {
+					log.Printf("Invalid NVD poll interval, using default 1h: %v", err)
+					interval = 1 * time.Hour
+				}
 				if interval == 0 {
 					interval = 1 * time.Hour
 				}
@@ -91,7 +97,11 @@ func main() {
 				if err := runner.Run(ctx); err != nil {
 					log.Printf("KEV runner error: %v", err)
 				}
-				interval, _ := cfg.KEV.GetPollDuration()
+				interval, err := cfg.KEV.GetPollDuration()
+				if err != nil {
+					log.Printf("Invalid KEV poll interval, using default 1h: %v", err)
+					interval = 1 * time.Hour
+				}
 				if interval == 0 {
 					interval = 1 * time.Hour
 				}
@@ -107,7 +117,11 @@ func main() {
 				if err := runner.Run(ctx); err != nil {
 					log.Printf("EPSS runner error: %v", err)
 				}
-				interval, _ := cfg.EPSS.GetPollDuration()
+				interval, err := cfg.EPSS.GetPollDuration()
+				if err != nil {
+					log.Printf("Invalid EPSS poll interval, using default 24h: %v", err)
+					interval = 24 * time.Hour
+				}
 				if interval == 0 {
 					interval = 24 * time.Hour
 				}
@@ -124,8 +138,9 @@ func main() {
 	<-sigCh
 
 	log.Println("Shutting down...")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	cancel() // Cancel context to signal goroutines to stop
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
