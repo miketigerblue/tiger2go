@@ -1,6 +1,48 @@
 # Tiger2Go - TigerFetch (Go Port)
 
-`tigerfetch` is a high-performance OSINT vulnerability ingestor rewritten in Go. It aggregates security advisories from RSS/Atom feeds, enriches them with official CVE data (NVD, CISA KEV), and tracks daily EPSS scores.
+## Why a Rust → Go port?
+
+Most ports you see out in the wild go **Go → Rust** (performance, memory safety signalling, “serious systems” vibes).
+
+This project goes the other way on purpose.
+
+`tiger2go` repo is a Go port of **tigerfetch**, originally written in Rust. The goal here is not “Go is better than Rust”. It’s that **the dominant problem in this system is not memory ownership** — it’s *operational ingestion*:
+
+- high-volume I/O (RSS/Atom, NVD JSON, KEV, daily EPSS)
+- untrusted inputs (feeds are user input in a trenchcoat)
+- concurrency + retries + backoff + rate limits
+- metrics, health, and long-running process behaviour
+- boring reliability under real-world failure modes
+
+Go is simply a great fit for that shape:
+
+goroutines and a mature runtime make it easy to coordinate concurrent workers,
+and the resulting code tends to be globally readable and straightforward to operate.
+
+Rust is still excellent — especially when memory ownership and correctness under adversarial conditions *is* the main fight. In this system, that fight is mostly elsewhere: scheduling, ingestion hygiene, and observability.
+
+So the port direction is less “downgrade” and more **optimising for shipping and operating**. 
+
+A practical side-effect: the original Rust implementation had clear boundaries and explicit data flow. That makes the port tractable (and reviewable), because the architecture maps cleanly to Go.
+
+If you’re curious about the intended “layering” philosophy:
+
+- **Rust** shines for foundations (parsers, crypto, runtimes, very hot paths)
+- **Go** shines for control planes (ingestors, schedulers, services, metrics)
+- **Python** often shines for reasoning layers (enrichment, ML, semantic glue)
+
+`tiger2go` deliberately sits in that “control plane” zone.
+
+### Design focus
+
+Data sources → ingestion → normalisation → storage → downstream analysis
+
+- Sources: RSS/Atom, NVD, CISA KEV, EPSS
+- Ingestion: concurrent workers, rate limiting, retries/backoff
+- Hygiene: sanitisation, validation, idempotency/dedupe
+- Ops: `/metrics`, `/healthz`, migrations, deployability
+
+
 
 ## 🚀 Features
 
