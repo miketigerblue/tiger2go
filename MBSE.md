@@ -135,6 +135,22 @@ The codebase follows the **Standard Go Project Layout** with clean separation of
 
 **Concurrency model:** The main loop runs all four worker types (RSS, NVD, KEV, EPSS) concurrently via `sync.WaitGroup`. RSS feeds are additionally bounded by a semaphore (concurrency = 3) to avoid overwhelming upstream sources.
 
+The application’s main loop launches four different types of background workers at the same time:
+
+    RSS/Atom feed ingestor
+    NVD (National Vulnerability Database) fetcher
+    KEV (CISA Known Exploited Vulnerabilities) fetcher
+    EPSS (Exploit Prediction Scoring System) fetcher
+
+These workers are started as separate goroutines (lightweight threads in Go), and their lifecycles are coordinated using a sync.WaitGroup. This ensures the main process can wait for all workers to finish before proceeding or shutting down.
+
+For the RSS/Atom feed ingestor, there may be many feeds to fetch. To avoid making too many simultaneous requests (which could overload or get blocked by upstream servers), the code uses a semaphore pattern:
+
+Only three RSS feeds are fetched in parallel at any given time.
+When a feed fetch starts, it acquires a slot in the semaphore; when it finishes, it releases the slot, allowing another feed to start.
+
+This approach balances efficiency (parallelism) with politeness (not overwhelming external sources), and ensures all ingestion tasks run concurrently but safely.
+
 ---
 
 ## 6. Physical Architecture & Deployment
