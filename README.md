@@ -1,4 +1,8 @@
-# Tiger2Go - TigerFetch (Go Port)
+# Tiger2Go - TigerFetch
+
+> **Mission:** Provide a reliable, observable, single-binary cybersecurity OSINT ingestion service that continuously collects, normalises, and stores threat intelligence from public feeds and vulnerability databases — giving security teams a queryable data lake for risk-informed decision making.
+
+---
 
 ## Why a Rust → Go port?
 
@@ -53,12 +57,15 @@ Data sources → ingestion → normalisation → storage → downstream analysis
     *   **EPSS**: Bulk ingestion of daily Exploit Prediction Scoring System scores (~300k records/day).
 *   **Database**: PostgreSQL storage using `pgx/v5` connection pooling.
 *   **Migrations**: Embedded schema migrations using `pressly/goose`.
-*   **Observability**: Prometheus metrics (`/metrics`) and Health checks (`/healthz`).
+*   **Observability**: Prometheus metrics (`/metrics`), health checks (`/healthz`), and two provisioned Grafana dashboards (operational + threat intelligence).
+*   **Grafana Dashboards**:
+    *   **TigerFetch Operations** — ~30 Prometheus-powered panels: feed health, NVD/EPSS/KEV pipeline status, upstream latency, DB pool, Go runtime.
+    *   **Threat Intelligence** — ~20 SQL-powered panels: EPSS top 25, CVSS x EPSS danger zone, NVD severity landscape, CISA KEV catalog, feed content coverage.
 
 ## 🛠️ Build & Run
 
 ### Prerequisites
-*   Go 1.24+
+*   Go 1.26+
 *   PostgreSQL 14+
 
 ### Building
@@ -81,6 +88,20 @@ The application will:
 1.  Run pending database migrations.
 2.  Start the HTTP metrics server on `:9101`.
 3.  Launch concurrent workers for RSS feeds, NVD, KEV, and EPSS.
+
+### Full Stack (Docker Compose)
+
+```bash
+docker compose up --build
+```
+
+This starts PostgreSQL, TigerFetch, Prometheus, and Grafana. Dashboards are auto-provisioned:
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| TigerFetch metrics | http://localhost:9101/metrics | — |
+| Prometheus | http://localhost:9090 | — |
+| Grafana | http://localhost:3000 | admin / admin |
 
 ### Testing
 
@@ -110,4 +131,5 @@ Configuration is handled via `Config.toml` and environment variables. Key sectio
 *   `internal/ingestor`: RSS/Atom feed processing logic.
 *   `internal/cve`: Specialized modules for NVD, KEV, and EPSS.
 *   `internal/metrics`: Prometheus metric definitions, pgxpool collector, HTTP middleware.
+*   `grafana/`: Provisioned Grafana dashboards and datasource configuration.
 *   `migrations/`: SQL migration files (Goose compatible).

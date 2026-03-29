@@ -65,22 +65,22 @@ services:
     networks:
       - tiger2go_net
 
-  # grafana:
-  #   image: grafana/grafana:latest
-  #   container_name: grafana
-  #   depends_on:
-  #     - prometheus
-  #   environment:
-  #     GF_SECURITY_ADMIN_PASSWORD: "admin"
-  #     GF_USERS_ALLOW_SIGN_UP: "false"
-  #     GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:%(http_port)s"
-  #     GF_INSTALL_PLUGINS: "yesoreyeram-infinity-datasource, grafana-llm-app"
-  #   volumes:
-  #     - grafana_data:/var/lib/grafana
-  #   ports:
-  #     - "3000:3000"
-  #   networks:
-  #     - tiger2go_net
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - tiger2go_net
 
   # postgrest:
   #   build:

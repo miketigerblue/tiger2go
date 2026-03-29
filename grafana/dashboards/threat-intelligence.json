@@ -1,0 +1,560 @@
+{
+  "uid": "tigerfetch-intel",
+  "title": "Threat Intelligence",
+  "tags": ["tigerfetch", "intel", "provisioned"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "schemaVersion": 39,
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "epss_threshold",
+        "type": "custom",
+        "current": { "text": "0.5", "value": "0.5" },
+        "options": [
+          { "text": "0.1", "value": "0.1", "selected": false },
+          { "text": "0.3", "value": "0.3", "selected": false },
+          { "text": "0.5", "value": "0.5", "selected": true },
+          { "text": "0.7", "value": "0.7", "selected": false },
+          { "text": "0.9", "value": "0.9", "selected": false }
+        ],
+        "label": "EPSS Threshold"
+      },
+      {
+        "name": "cvss_threshold",
+        "type": "custom",
+        "current": { "text": "7.0", "value": "7.0" },
+        "options": [
+          { "text": "5.0", "value": "5.0", "selected": false },
+          { "text": "7.0", "value": "7.0", "selected": true },
+          { "text": "8.0", "value": "8.0", "selected": false },
+          { "text": "9.0", "value": "9.0", "selected": false }
+        ],
+        "label": "CVSS Threshold"
+      },
+      {
+        "name": "feed_source",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "pg" },
+        "query": "SELECT DISTINCT feed_url FROM current ORDER BY feed_url",
+        "includeAll": true,
+        "allValue": "%",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": true,
+        "sort": 1,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "type": "row",
+      "title": "Threat Landscape Overview",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Total CVEs Tracked",
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT COUNT(DISTINCT cve_id) AS total FROM cve_enriched", "format": "table" }]
+    },
+    {
+      "type": "stat",
+      "title": "KEV Entries",
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS kev_count FROM cve_enriched WHERE source = 'CISA-KEV'", "format": "table" }]
+    },
+    {
+      "type": "stat",
+      "title": "Critical CVEs (CVSS >= 9)",
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS critical FROM cve_enriched WHERE source = 'NVD' AND cvss_base >= 9.0", "format": "table" }]
+    },
+    {
+      "type": "stat",
+      "title": "EPSS Records (Latest Day)",
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS records FROM epss_daily WHERE as_of = (SELECT MAX(as_of) FROM epss_daily)", "format": "table" }]
+    },
+    {
+      "type": "stat",
+      "title": "High-Risk CVEs (CVSS >= $cvss_threshold AND EPSS >= $epss_threshold)",
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null },
+          { "color": "orange", "value": 10 },
+          { "color": "red", "value": 50 }
+        ]}},
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS danger_zone FROM cve_enriched c JOIN epss_daily e ON c.cve_id = e.cve_id AND e.as_of = (SELECT MAX(as_of) FROM epss_daily) WHERE c.source = 'NVD' AND c.cvss_base >= ${cvss_threshold} AND e.epss >= ${epss_threshold}", "format": "table" }]
+    },
+    {
+      "type": "stat",
+      "title": "Feed Items (7d)",
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS items FROM archive WHERE inserted_at >= NOW() - INTERVAL '7 days'", "format": "table" }]
+    },
+
+    {
+      "type": "row",
+      "title": "EPSS — Exploit Prediction",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "table",
+      "title": "Top 25 Most Exploitable CVEs (EPSS Today)",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 12 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "epss" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 0.3 },
+                { "color": "orange", "value": 0.6 },
+                { "color": "red", "value": 0.8 }
+              ]}},
+              { "id": "decimals", "value": 4 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "percentile" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 2 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "cvss_base" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 4.0 },
+                { "color": "orange", "value": 7.0 },
+                { "color": "red", "value": 9.0 }
+              ]}},
+              { "id": "decimals", "value": 1 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "in_kev" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "transparent", "value": null },
+                { "color": "red", "value": 1 }
+              ]}},
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "0": { "text": "", "color": "transparent" }, "1": { "text": "KEV", "color": "red" } } }
+              ]}
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "epss", "desc": true }] },
+      "targets": [{
+        "rawSql": "SELECT e.cve_id, e.epss, e.percentile, COALESCE(c.cvss_base, 0) AS cvss_base, CASE WHEN k.cve_id IS NOT NULL THEN 1 ELSE 0 END AS in_kev FROM epss_daily e LEFT JOIN cve_enriched c ON e.cve_id = c.cve_id AND c.source = 'NVD' LEFT JOIN cve_enriched k ON e.cve_id = k.cve_id AND k.source = 'CISA-KEV' WHERE e.as_of = (SELECT MAX(as_of) FROM epss_daily) ORDER BY e.epss DESC LIMIT 25",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "EPSS Biggest Movers (24h Delta)",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 12 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "delta" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-text" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 0.05 },
+                { "color": "orange", "value": 0.1 },
+                { "color": "red", "value": 0.2 }
+              ]}},
+              { "id": "decimals", "value": 4 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "epss_today" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 0.3 },
+                { "color": "orange", "value": 0.6 },
+                { "color": "red", "value": 0.8 }
+              ]}},
+              { "id": "decimals", "value": 4 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "epss_yesterday" },
+            "properties": [{ "id": "decimals", "value": 4 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "delta", "desc": true }] },
+      "targets": [{
+        "rawSql": "WITH latest AS (SELECT MAX(as_of) AS d FROM epss_daily), today AS ( SELECT cve_id, epss AS epss_today, percentile AS pct_today FROM epss_daily WHERE as_of = (SELECT d FROM latest) ), yday AS ( SELECT cve_id, epss AS epss_yesterday, percentile AS pct_yesterday FROM epss_daily WHERE as_of = (SELECT d - 1 FROM latest) ) SELECT t.cve_id, t.epss_today, y.epss_yesterday, (t.epss_today - y.epss_yesterday) AS delta, t.pct_today AS percentile_today FROM today t JOIN yday y USING (cve_id) WHERE ABS(t.epss_today - y.epss_yesterday) > 0.001 ORDER BY (t.epss_today - y.epss_yesterday) DESC LIMIT 25",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "barchart",
+      "title": "EPSS Score Distribution (Today)",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 80 }
+        },
+        "overrides": []
+      },
+      "options": { "orientation": "vertical", "xTickLabelRotation": 0, "legend": { "displayMode": "hidden" }, "tooltip": { "mode": "single" } },
+      "targets": [{
+        "rawSql": "SELECT CASE WHEN epss < 0.01 THEN '0-0.01' WHEN epss < 0.05 THEN '0.01-0.05' WHEN epss < 0.1 THEN '0.05-0.1' WHEN epss < 0.2 THEN '0.1-0.2' WHEN epss < 0.3 THEN '0.2-0.3' WHEN epss < 0.5 THEN '0.3-0.5' WHEN epss < 0.7 THEN '0.5-0.7' WHEN epss < 0.9 THEN '0.7-0.9' ELSE '0.9-1.0' END AS bucket, COUNT(*) AS count FROM epss_daily WHERE as_of = (SELECT MAX(as_of) FROM epss_daily) GROUP BY bucket ORDER BY bucket",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "EPSS Daily Record Count (Trend)",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 }, "color": { "fixedColor": "purple", "mode": "fixed" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "hidden" }, "tooltip": { "mode": "single" } },
+      "targets": [{
+        "rawSql": "SELECT as_of AS time, COUNT(*) AS records FROM epss_daily GROUP BY as_of ORDER BY as_of",
+        "format": "time_series"
+      }]
+    },
+
+    {
+      "type": "row",
+      "title": "Danger Zone — CVSS x EPSS",
+      "gridPos": { "x": 0, "y": 26, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "table",
+      "title": "Danger Zone: High CVSS + High EPSS (CVSS >= $cvss_threshold AND EPSS >= $epss_threshold)",
+      "description": "CVEs that are both severe AND likely to be exploited. These are priority-1 for patching.",
+      "gridPos": { "x": 0, "y": 27, "w": 24, "h": 12 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "cvss_base" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "yellow", "value": null },
+                { "color": "orange", "value": 8.0 },
+                { "color": "red", "value": 9.0 }
+              ]}},
+              { "id": "decimals", "value": 1 },
+              { "id": "custom.width", "value": 80 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "epss" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "yellow", "value": null },
+                { "color": "orange", "value": 0.7 },
+                { "color": "red", "value": 0.9 }
+              ]}},
+              { "id": "decimals", "value": 4 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "in_kev" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "transparent", "value": null },
+                { "color": "dark-red", "value": 1 }
+              ]}},
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "0": { "text": "", "color": "transparent" }, "1": { "text": "ACTIVELY EXPLOITED", "color": "dark-red" } } }
+              ]},
+              { "id": "custom.width", "value": 180 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "risk_score" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 10 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "yellow", "value": null },
+                { "color": "orange", "value": 6 },
+                { "color": "red", "value": 8 }
+              ]}},
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.width", "value": 200 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "percentile" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.width", "value": 90 }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "risk_score", "desc": true }] },
+      "targets": [{
+        "rawSql": "SELECT c.cve_id, c.cvss_base, e.epss, e.percentile, ROUND((c.cvss_base * e.epss * 10)::numeric / 10, 2) AS risk_score, CASE WHEN k.cve_id IS NOT NULL THEN 1 ELSE 0 END AS in_kev FROM cve_enriched c JOIN epss_daily e ON c.cve_id = e.cve_id AND e.as_of = (SELECT MAX(as_of) FROM epss_daily) LEFT JOIN cve_enriched k ON c.cve_id = k.cve_id AND k.source = 'CISA-KEV' WHERE c.source = 'NVD' AND c.cvss_base >= ${cvss_threshold} AND e.epss >= ${epss_threshold} ORDER BY (c.cvss_base * e.epss) DESC LIMIT 50",
+        "format": "table"
+      }]
+    },
+
+    {
+      "type": "row",
+      "title": "NVD — Vulnerability Landscape",
+      "gridPos": { "x": 0, "y": 39, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "barchart",
+      "title": "CVSS Score Distribution",
+      "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 80 },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": { "orientation": "vertical", "legend": { "displayMode": "hidden" }, "tooltip": { "mode": "single" } },
+      "targets": [{
+        "rawSql": "SELECT CASE WHEN cvss_base < 1 THEN '0-1 (None)' WHEN cvss_base < 4 THEN '1-4 (Low)' WHEN cvss_base < 7 THEN '4-7 (Medium)' WHEN cvss_base < 9 THEN '7-9 (High)' ELSE '9-10 (Critical)' END AS severity, COUNT(*) AS count FROM cve_enriched WHERE source = 'NVD' AND cvss_base IS NOT NULL GROUP BY severity ORDER BY severity",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "NVD CVEs by Modified Date (30d)",
+      "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "critical" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "high" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "medium" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "low" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "rawSql": "SELECT DATE_TRUNC('day', modified) AS time, COUNT(*) FILTER (WHERE cvss_base >= 9) AS critical, COUNT(*) FILTER (WHERE cvss_base >= 7 AND cvss_base < 9) AS high, COUNT(*) FILTER (WHERE cvss_base >= 4 AND cvss_base < 7) AS medium, COUNT(*) FILTER (WHERE cvss_base < 4) AS low FROM cve_enriched WHERE source = 'NVD' AND cvss_base IS NOT NULL AND modified >= NOW() - INTERVAL '30 days' GROUP BY DATE_TRUNC('day', modified) ORDER BY time", "format": "time_series" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Latest Critical CVEs (CVSS >= 9.0, Last 30d)",
+      "gridPos": { "x": 0, "y": 48, "w": 12, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "cvss_base" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "orange", "value": null },
+                { "color": "red", "value": 9.5 }
+              ]}},
+              { "id": "decimals", "value": 1 }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT cve_id, cvss_base, modified::date AS modified FROM cve_enriched WHERE source = 'NVD' AND cvss_base >= 9.0 AND modified >= NOW() - INTERVAL '30 days' ORDER BY modified DESC, cvss_base DESC LIMIT 30",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "CISA Known Exploited Vulnerabilities (Latest 25)",
+      "gridPos": { "x": 12, "y": 48, "w": 12, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "date_added" },
+            "properties": [{ "id": "custom.width", "value": 100 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "vendor" },
+            "properties": [{ "id": "custom.width", "value": 100 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT cve_id, json->>'vendorProject' AS vendor, json->>'product' AS product, json->>'vulnerabilityName' AS vulnerability, json->>'dateAdded' AS date_added FROM cve_enriched WHERE source = 'CISA-KEV' ORDER BY json->>'dateAdded' DESC LIMIT 25",
+        "format": "table"
+      }]
+    },
+
+    {
+      "type": "row",
+      "title": "Feed Intelligence",
+      "gridPos": { "x": 0, "y": 58, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Feed Item Volume (7d)",
+      "gridPos": { "x": 0, "y": 59, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"], "sortBy": "Total", "sortDesc": true }, "tooltip": { "mode": "multi" } },
+      "targets": [{
+        "rawSql": "SELECT DATE_TRUNC('day', inserted_at) AS time, feed_title, COUNT(*) AS items FROM archive WHERE inserted_at >= NOW() - INTERVAL '7 days' AND feed_url LIKE '${feed_source}' GROUP BY time, feed_title ORDER BY time",
+        "format": "time_series"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "Feed Content Coverage",
+      "gridPos": { "x": 12, "y": 59, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "pct_complete" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 100 },
+              { "id": "unit", "value": "percent" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 50 },
+                { "color": "green", "value": 80 }
+              ]}},
+              { "id": "decimals", "value": 1 }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "pct_complete", "desc": false }] },
+      "targets": [{
+        "rawSql": "SELECT feed_url AS feed, COUNT(*) AS total, SUM(CASE WHEN (content IS NOT NULL AND content != '') OR (summary IS NOT NULL AND summary != '') THEN 1 ELSE 0 END) AS has_content, ROUND(100.0 * SUM(CASE WHEN (content IS NOT NULL AND content != '') OR (summary IS NOT NULL AND summary != '') THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS pct_complete FROM current GROUP BY feed_url ORDER BY pct_complete ASC",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "Latest Feed Items (50)",
+      "gridPos": { "x": 0, "y": 67, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "title" },
+            "properties": [{ "id": "custom.width", "value": 400 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "link" },
+            "properties": [
+              { "id": "links", "value": [{ "title": "Open", "targetBlank": true, "url": "${__data.fields.link}" }] },
+              { "id": "custom.width", "value": 80 },
+              { "id": "mappings", "value": [{ "type": "regex", "options": { "pattern": ".*", "result": { "text": "Open" } } }] }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "published" },
+            "properties": [{ "id": "custom.width", "value": 140 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "feed" },
+            "properties": [{ "id": "custom.width", "value": 200 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT title, link, feed_title AS feed, published, categories FROM current WHERE feed_url LIKE '${feed_source}' ORDER BY inserted_at DESC LIMIT 50",
+        "format": "table"
+      }]
+    }
+  ]
+}

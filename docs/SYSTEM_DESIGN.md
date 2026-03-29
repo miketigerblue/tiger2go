@@ -1,6 +1,6 @@
 # TigerFetch System Design Document
 
-> **Version:** 1.0 | **Date:** 2026-03-29 | **Status:** Production
+> **Version:** 1.1.1 | **Date:** 2026-03-29 | **Status:** Production
 > **Service:** `tigerfetch` | **Language:** Go 1.26.1 | **Database:** PostgreSQL 16
 
 ---
@@ -487,6 +487,51 @@ Configurable via `LOG_LEVEL` environment variable: `DEBUG`, `INFO`, `WARN`, `ERR
 | `/healthz` | GET | Liveness probe (returns `200 OK`) | None |
 | `/metrics` | GET | Prometheus scrape endpoint | None |
 
+### 7.6 Grafana Dashboards
+
+Two provisioned dashboards are auto-loaded via `grafana/dashboards/` and require zero manual setup.
+
+#### TigerFetch Operations (`tigerfetch-ops`)
+
+Operational dashboard sourced from Prometheus. 7 rows, ~30 panels:
+
+| Row | Panels | Purpose |
+|-----|--------|---------|
+| System Overview | Uptime, Go version, goroutines, memory, GC pause | Process health at a glance |
+| Feed Ingestion | Success rate, items/min, empty content ratio, freshness, per-feed breakdown | Feed pipeline health |
+| NVD Enrichment | Fetch rate, CVEs processed, cursor lag, batch size, run duration | NVD catch-up progress |
+| EPSS & KEV | EPSS records, run outcomes, KEV vuln count, cursor lag | Enrichment pipeline status |
+| Upstream HTTP | Latency heatmap, P50/P99 by source, error rate | External API performance |
+| DB Pool | Utilisation gauge, connection breakdown, acquire latency, exhaustion events | Database pressure |
+| Runtime | Goroutine count, heap usage, GC frequency | Go runtime internals |
+
+Template variables: `$feed` (feed name filter), `$source` (upstream source filter).
+
+#### Threat Intelligence (`tigerfetch-intel`)
+
+Analytical dashboard sourced from PostgreSQL. 5 rows, ~20 panels:
+
+| Row | Panels | Purpose |
+|-----|--------|---------|
+| Threat Landscape Overview | Total CVEs, KEV entries, critical CVEs, EPSS records, high-risk count, feed items (7d) | Key numbers at a glance |
+| EPSS — Exploit Prediction | Top 25 most exploitable CVEs, biggest 24h movers, score distribution, daily record trend | Exploitation probability analysis |
+| Danger Zone — CVSS x EPSS | Combined table: CVEs with high severity AND high exploit probability, risk score, KEV flag | Priority-1 patching candidates |
+| NVD — Vulnerability Landscape | CVSS distribution, CVEs by severity over time, latest critical CVEs, CISA KEV catalog | Vulnerability landscape overview |
+| Feed Intelligence | Feed volume timeline, content coverage by feed, latest 50 feed items with links | RSS/Atom feed health and content |
+
+Template variables: `$epss_threshold`, `$cvss_threshold`, `$feed_source`.
+
+Risk score formula: `ROUND((cvss_base * epss * 10) / 10, 2)` — produces a 0–10 scale combining severity with exploitation likelihood.
+
+#### Datasource Configuration
+
+Both datasources are provisioned via `grafana/provisioning/datasources/datasource.yml`:
+
+| Datasource | Type | UID | Target | Default |
+|------------|------|-----|--------|---------|
+| Prometheus | `prometheus` | `prometheus` | `http://prometheus:9090` | Yes |
+| PostgreSQL | `postgres` | `pg` | `db:5432` | No |
+
 ---
 
 ## 8. Security
@@ -571,16 +616,21 @@ Port:       9101 (internal)
 ### 9.4 Docker Compose Stack
 
 ```
-+-----------+     +-----------+     +------------+
-| postgres  |<----| tigerfetch|---->| prometheus |
-| :5432     |     | :9101     |     | :9090      |
-| (PG 16)   |     | (Go app)  |     | (scrapes   |
-+-----------+     +-----------+     |  every 15s)|
-     |                              +------------+
++-----------+     +-----------+     +------------+     +-----------+
+| postgres  |<----| tigerfetch|---->| prometheus |---->| grafana   |
+| :5432     |     | :9101     |     | :9090      |     | :3000     |
+| (PG 16)   |     | (Go app)  |     | (scrapes   |     | (2 dash-  |
++-----------+     +-----------+     |  every 15s)|     |  boards)  |
+     |                              +------------+     +-----------+
+     |                                                       |
+     +-------------------------------------------------------+
+     |                          (SQL queries for Threat Intel dashboard)
      v
  tiger2go_data
  (named volume)
 ```
+
+Services: `db`, `tigerfetch`, `prometheus`, `grafana`. All on `tiger2go_net` bridge network.
 
 ---
 
