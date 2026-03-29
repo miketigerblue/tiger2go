@@ -41,10 +41,8 @@ services:
     build: .
     image: tigerfetch:latest
     container_name: tigerfetch
-    environment:
-      DATABASE_URL: "postgres://user:pass@db:5432/tiger2go?sslmode=disable"
-      INGEST_INTERVAL: "1h"
-      SERVER_BIND: "0.0.0.0:9101"
+    volumes:
+      - ./Config.toml:/home/app/Config.toml:ro
     ports:
       - "9101:9101"
     depends_on:
