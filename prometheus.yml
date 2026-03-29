@@ -1,5 +1,5 @@
 scrape_configs:
-  - job_name: 'rust_ingestor'
+  - job_name: 'tigerfetch'
     scrape_interval: 15s
     static_configs:
-      - targets: ['rust_ingestor:9100']
+      - targets: ['tigerfetch:9101']

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"tiger2go/internal/config"
+	"tiger2go/internal/metrics"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,6 +66,11 @@ func (r *NvdRunner) Run(ctx context.Context) error {
 		return nil
 	}
 
+	start := time.Now()
+	defer func() {
+		metrics.NvdRunDuration.Observe(time.Since(start).Seconds())
+	}()
+
 	// 1. Get Cursor
 	cursor, err := r.getCursor(ctx)
 	if err != nil {
@@ -78,6 +84,10 @@ func (r *NvdRunner) Run(ctx context.Context) error {
 	}
 
 	now := time.Now().UTC()
+
+	// Record cursor lag
+	metrics.NvdCursorLag.Set(now.Sub(startDt).Seconds())
+
 	// NVD Max window is 120 days
 	maxWindow := 120 * 24 * time.Hour
 
@@ -99,6 +109,9 @@ func (r *NvdRunner) Run(ctx context.Context) error {
 		}
 
 		startDt = endDt
+
+		// Update cursor lag as we catch up
+		metrics.NvdCursorLag.Set(now.Sub(startDt).Seconds())
 	}
 
 	slog.Info("NVD ingestion complete")
@@ -152,6 +165,9 @@ func (r *NvdRunner) processWindow(ctx context.Context, start, end time.Time) err
 			return fmt.Errorf("failed to save batch: %w", err)
 		}
 
+		metrics.NvdBatchSize.Observe(float64(len(resp.Vulnerabilities)))
+		metrics.NvdCvesProcessed.Add(float64(len(resp.Vulnerabilities)))
+
 		// Log progress
 		slog.Info("Processed NVD batch", "start_index", startIndex, "count", len(resp.Vulnerabilities), "total_in_window", resp.TotalResults)
 
@@ -188,12 +204,16 @@ func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, 
 		}
 		req.Header.Set("User-Agent", "tigerfetch/1.0 (+https://tigerblue.app)")
 
+		httpStart := time.Now()
 		resp, err := r.client.Do(req)
 		if err != nil {
+			metrics.UpstreamRequestDuration.WithLabelValues("nvd").Observe(time.Since(httpStart).Seconds())
+			metrics.NvdFetches.WithLabelValues("error").Inc()
 			slog.Warn("NVD fetch failed, retrying", "url", urlStr, "error", err)
 			time.Sleep(backoff)
 			continue
 		}
+		metrics.UpstreamRequestDuration.WithLabelValues("nvd").Observe(time.Since(httpStart).Seconds())
 
 		if resp.StatusCode == http.StatusOK {
 			body, readErr := io.ReadAll(resp.Body)
@@ -201,12 +221,14 @@ func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, 
 			if readErr != nil {
 				return nil, readErr
 			}
+			metrics.NvdFetches.WithLabelValues("success").Inc()
 			return body, nil
 		}
 		_ = resp.Body.Close()
 
 		// Check for 429 or 503
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			metrics.NvdRateLimits.Inc()
 			slog.Warn("NVD rate limited or unavailable", "status", resp.StatusCode)
 			time.Sleep(backoff)
 			backoff *= 2
@@ -216,6 +238,7 @@ func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, 
 			continue
 		}
 
+		metrics.NvdApiErrors.WithLabelValues(strconv.Itoa(resp.StatusCode)).Inc()
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 }
@@ -239,12 +262,15 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 
 		// Extract CVSS Base Score (V3.1 preferred)
 		cvssBase := extractCvssScore(item.Cve.Metrics)
+		if cvssBase == nil {
+			metrics.NvdCvesWithoutCvss.Inc()
+		}
 
 		batch.Queue(`
 			INSERT INTO cve_enriched (cve_id, source, json, cvss_base, modified)
 			VALUES ($1, 'NVD', $2, $3, $4)
 			ON CONFLICT (cve_id, source)
-			DO UPDATE SET 
+			DO UPDATE SET
 				json = EXCLUDED.json,
 				cvss_base = EXCLUDED.cvss_base,
 				modified = EXCLUDED.modified

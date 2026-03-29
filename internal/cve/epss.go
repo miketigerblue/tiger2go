@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"tiger2go/internal/config"
+	"tiger2go/internal/metrics"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,11 +49,19 @@ func NewEpssRunner(db *pgxpool.Pool, cfg config.EpssConfig) *EpssRunner {
 }
 
 // Run starts the EPSS ingestion process.
-func (r *EpssRunner) Run(ctx context.Context) error {
+func (r *EpssRunner) Run(ctx context.Context) (retErr error) {
 	if !r.cfg.Enabled {
 		slog.Info("EPSS ingestion disabled")
 		return nil
 	}
+
+	start := time.Now()
+	defer func() {
+		metrics.EpssRunDuration.Observe(time.Since(start).Seconds())
+		if retErr != nil {
+			metrics.EpssRuns.WithLabelValues("error").Inc()
+		}
+	}()
 
 	slog.Info("Starting EPSS ingestion")
 
@@ -80,6 +89,9 @@ func (r *EpssRunner) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to parse EPSS date %s: %w", dateStr, err)
 	}
 
+	// Record cursor lag
+	metrics.EpssCursorLag.Set(time.Since(date).Seconds())
+
 	// 2. Check if we already have this date
 	// Note: Schema uses 'as_of' column, not 'date'
 	var exists bool
@@ -90,6 +102,7 @@ func (r *EpssRunner) Run(ctx context.Context) error {
 
 	if exists {
 		slog.Info("EPSS data for date already exists, skipping", "date", dateStr)
+		metrics.EpssRuns.WithLabelValues("skipped").Inc()
 		return nil
 	}
 
@@ -107,6 +120,8 @@ func (r *EpssRunner) Run(ctx context.Context) error {
 		return err
 	}
 	offset += len(resp.Data)
+	metrics.EpssRecordsProcessed.Add(float64(len(resp.Data)))
+	metrics.EpssPagesFetched.Inc()
 	slog.Info("Ingested EPSS batch", "offset", offset, "total", total)
 
 	for offset < total {
@@ -128,17 +143,22 @@ func (r *EpssRunner) Run(ctx context.Context) error {
 		}
 
 		offset += len(pData.Data)
+		metrics.EpssRecordsProcessed.Add(float64(len(pData.Data)))
+		metrics.EpssPagesFetched.Inc()
 		slog.Info("Ingested EPSS batch", "offset", offset, "total", total)
 
 		time.Sleep(100 * time.Millisecond) // Rate limit
 	}
 
 	slog.Info("EPSS ingestion complete", "date", dateStr, "total", total)
+	metrics.EpssRuns.WithLabelValues("success").Inc()
 	return nil
 }
 
 func (r *EpssRunner) fetch(url string) (*EpssResponse, error) {
+	httpStart := time.Now()
 	resp, err := r.client.Get(url)
+	metrics.UpstreamRequestDuration.WithLabelValues("epss").Observe(time.Since(httpStart).Seconds())
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +183,8 @@ func (r *EpssRunner) ensurePartition(ctx context.Context, date time.Time) error 
 	partitionName := fmt.Sprintf("epss_daily_y%dm%02d", date.Year(), date.Month())
 
 	query := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s 
-		PARTITION OF epss_daily 
+		CREATE TABLE IF NOT EXISTS %s
+		PARTITION OF epss_daily
 		FOR VALUES FROM ('%s') TO ('%s')
 	`, partitionName, startOfMonth.Format("2006-01-02"), nextMonth.Format("2006-01-02"))
 

@@ -13,7 +13,9 @@ COPY . .
 
 # 3) Build the application
 # Results in /app/tigerfetch
-RUN go build -o tigerfetch ./cmd/tigerfetch
+ARG VERSION=dev
+ARG COMMIT=none
+RUN go build -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT}" -o tigerfetch ./cmd/tigerfetch
 
 # -----------------------------------------------------------------
 # Runtime stage

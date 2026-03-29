@@ -13,10 +13,23 @@ import (
 	"tiger2go/internal/config"
 	"tiger2go/internal/cve"
 	"tiger2go/internal/db"
+	"tiger2go/internal/ingestor"
+	"tiger2go/internal/metrics"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
 )
 
 func main() {
 	log.Println("Starting TigerFetch...")
+
+	// Record build info and start time
+	metrics.RecordBuildInfo(version, commit)
+	metrics.RecordStartTime()
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -46,17 +59,22 @@ func main() {
 	}
 	defer pool.Close()
 
+	// Register pgxpool metrics collector
+	metrics.RegisterDBCollector(pool)
+
 	log.Println("Database connected successfully")
 
 	// Start HTTP server for metrics/health
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "OK")
 	})
+	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{
 		Addr:         cfg.ServerBind,
-		Handler:      http.DefaultServeMux,
+		Handler:      metrics.InstrumentHandler(mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
@@ -124,6 +142,26 @@ func main() {
 				}
 				if interval == 0 {
 					interval = 24 * time.Hour
+				}
+				time.Sleep(interval)
+			}
+		}()
+	}
+
+	// Run RSS/Atom feed ingestor
+	if len(cfg.Feeds) > 0 {
+		go func() {
+			client := ingestor.New(pool)
+			interval, err := cfg.GetIngestDuration()
+			if err != nil {
+				log.Printf("Invalid ingest_interval, using default 1h: %v", err)
+				interval = 1 * time.Hour
+			}
+			for {
+				for _, feedCfg := range cfg.Feeds {
+					if err := client.FetchAndSave(ctx, feedCfg); err != nil {
+						log.Printf("Feed ingestion error (%s): %v", feedCfg.Name, err)
+					}
 				}
 				time.Sleep(interval)
 			}
