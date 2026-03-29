@@ -3,21 +3,27 @@ networks:
 
 volumes:
   tiger2go_data:
+  grafana_data:
 
 services:
-  # db:
-  #   image: postgres:13
-  #   container_name: tiger2go_postgres
-  #   environment:
-  #     POSTGRES_USER: user
-  #     POSTGRES_PASSWORD: pass
-  #     POSTGRES_DB: tiger2go
-  #   volumes:
-  #     - tiger2go_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
-  #   networks:
-  #     - tiger2go_net
+  db:
+    image: postgres:16
+    container_name: tiger2go_postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: tiger2go
+    volumes:
+      - tiger2go_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - tiger2go_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d tiger2go"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -36,12 +42,14 @@ services:
     image: tigerfetch:latest
     container_name: tigerfetch
     environment:
-      # Map to Config struct fields (uppercase)
-      DATABASE_URL: "postgres://user:pass@host.docker.internal:5432/tiger2go?sslmode=disable"
+      DATABASE_URL: "postgres://user:pass@db:5432/tiger2go?sslmode=disable"
       INGEST_INTERVAL: "1h"
       SERVER_BIND: "0.0.0.0:9101"
     ports:
       - "9101:9101"
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - tiger2go_net
 
@@ -82,11 +90,14 @@ services:
       dockerfile: Dockerfile
     container_name: postgrest
     environment:
-      PGRST_DB_URI: postgres://user:pass@host.docker.internal:5432/tiger2go
+      PGRST_DB_URI: postgres://user:pass@db:5432/tiger2go
       PGRST_DB_SCHEMAS: public
       PGRST_DB_ANON_ROLE: web_anon
       PGRST_SERVER_PORT: 3000
     ports:
       - "3001:3000"
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - tiger2go_net

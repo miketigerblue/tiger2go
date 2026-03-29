@@ -114,7 +114,7 @@ func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gof
 			$9, $10, $11, $12, $13,
 			$14, NOW()
 		)
-		ON CONFLICT (guid) DO NOTHING
+		ON CONFLICT (guid, feed_url) DO NOTHING
 	`
 
 	_, err = tx.Exec(ctx, archiveQuery,
@@ -137,7 +137,7 @@ func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gof
 			$9, $10, $11, $12, $13,
 			$14, NOW()
 		)
-		ON CONFLICT (guid) DO UPDATE SET
+		ON CONFLICT (guid, feed_url) DO UPDATE SET
 			title = EXCLUDED.title,
 			link = EXCLUDED.link,
 			published = EXCLUDED.published,
