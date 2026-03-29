@@ -64,8 +64,8 @@ Data sources → ingestion → normalisation → storage → downstream analysis
 ### Building
 
 ```bash
-# Build the binary
-go build -o tigerfetch ./cmd/tigerfetch
+# Build the binary (injects version/commit via ldflags)
+make build
 ```
 
 ### Running
@@ -109,4 +109,5 @@ Configuration is handled via `Config.toml` and environment variables. Key sectio
 *   `internal/db`: Database connection and migration logic.
 *   `internal/ingestor`: RSS/Atom feed processing logic.
 *   `internal/cve`: Specialized modules for NVD, KEV, and EPSS.
+*   `internal/metrics`: Prometheus metric definitions, pgxpool collector, HTTP middleware.
 *   `migrations/`: SQL migration files (Goose compatible).

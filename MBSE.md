@@ -74,11 +74,11 @@ The system was migrated from an earlier Rust implementation to Go for ecosystem 
 
 | Capability | Description | Status |
 |:---|:---|:---|
-| **C1 – RSS/Atom Ingestion** | Parallel fetch of ~20+ cybersecurity RSS/Atom feeds (CISA, NCSC, SANS, vendor advisories, threat-intel blogs, news) with HTML sanitisation | ✅ Operational |
+| **C1 – RSS/Atom Ingestion** | Concurrent fetch (semaphore-bounded, max 5) of ~20+ cybersecurity RSS/Atom feeds (CISA, NCSC, SANS, vendor advisories, threat-intel blogs, news) with HTML sanitisation | ✅ Operational |
 | **C2 – NVD CVE Enrichment** | Windowed (120-day chunk) ingestion of NIST NVD v2.0 API data with API-key-aware rate limiting and CVSS score extraction | ✅ Operational |
 | **C3 – CISA KEV Sync** | Full-catalog sync of the Known Exploited Vulnerabilities list with cursor-based change detection | ✅ Operational |
 | **C4 – EPSS Scoring** | Daily bulk ingestion (~300k rows/day) of FIRST.org Exploit Prediction Scoring System data into a partitioned table | ✅ Operational |
-| **C5 – Observability** | Prometheus metrics endpoint (`/metrics`), health check (`/healthz`), Grafana dashboards | ✅ Operational |
+| **C5 – Observability** | 30+ Prometheus metrics (`/metrics`) covering feed ingestion, CVE/EPSS/KEV runners, pgxpool stats, upstream latency, cursor lag, and content quality; health check (`/healthz`); Grafana-ready | ✅ Operational |
 | **C6 – REST API** | PostgREST auto-generates a RESTful API from the PostgreSQL schema (views, tables) | ✅ Operational |
 | **C7 – Data Quality Analytics** | 10 SQL views for feed coverage, gap analysis, and triage reporting | ✅ Operational |
 
@@ -131,25 +131,10 @@ The codebase follows the **Standard Go Project Layout** with clean separation of
 | `internal/cve/nvd.go` | NVD v2.0 API client — 120-day windowed pagination, exponential backoff on 429/503, batched `pgx.Batch` writes to `cve_enriched`, CVSS v3.1/v3.0 score extraction |
 | `internal/cve/kev.go` | CISA KEV catalog client — full-catalog fetch, cursor-based skip logic, batch upsert to `cve_enriched` |
 | `internal/cve/epss.go` | FIRST.org EPSS client — paginated JSON API, auto-partition creation (monthly), high-throughput `COPY FROM` bulk insert (~300k rows) |
-| `migrations/` | 9 Goose-compatible SQL migrations covering schema evolution from initial tables through partitioned EPSS and QA views |
+| `internal/metrics/` | Prometheus metric definitions (`tigerfetch_*`), pgxpool stats collector, HTTP request instrumentation middleware |
+| `migrations/` | 10 Goose-compatible SQL migrations covering schema evolution from initial tables through partitioned EPSS and QA views |
 
-**Concurrency model:** The main loop runs all four worker types (RSS, NVD, KEV, EPSS) concurrently via `sync.WaitGroup`. RSS feeds are additionally bounded by a semaphore (concurrency = 3) to avoid overwhelming upstream sources.
-
-The application’s main loop launches four different types of background workers at the same time:
-
-    RSS/Atom feed ingestor
-    NVD (National Vulnerability Database) fetcher
-    KEV (CISA Known Exploited Vulnerabilities) fetcher
-    EPSS (Exploit Prediction Scoring System) fetcher
-
-These workers are started as separate goroutines (lightweight threads in Go), and their lifecycles are coordinated using a sync.WaitGroup. This ensures the main process can wait for all workers to finish before proceeding or shutting down.
-
-For the RSS/Atom feed ingestor, there may be many feeds to fetch. To avoid making too many simultaneous requests (which could overload or get blocked by upstream servers), the code uses a semaphore pattern:
-
-Only three RSS feeds are fetched in parallel at any given time.
-When a feed fetch starts, it acquires a slot in the semaphore; when it finishes, it releases the slot, allowing another feed to start.
-
-This approach balances efficiency (parallelism) with politeness (not overwhelming external sources), and ensures all ingestion tasks run concurrently but safely.
+**Concurrency model:** The main function launches four worker types (RSS ingestor, NVD, KEV, EPSS) as independent goroutines. Each worker runs in an infinite loop: execute its `Run()` function, then sleep for its configured poll interval before repeating. The RSS/Atom ingestor fetches feeds concurrently, bounded by a semaphore (max 5 concurrent fetches) to balance throughput with upstream politeness. Graceful shutdown is coordinated via context cancellation and OS signal handling (`SIGINT`/`SIGTERM`).
 
 ---
 
@@ -160,10 +145,9 @@ This approach balances efficiency (parallelism) with politeness (not overwhelmin
 | **Runtime** | Go 1.24, multi-stage Docker (builder: `golang:1.24-bookworm` → runtime: `debian:bookworm-slim`) | Non-root container user, minimal image |
 | **Database** | PostgreSQL 14+ | Table partitioning (EPSS by month), JSONB storage, UUID PKs, array columns |
 | **API Gateway** | PostgREST | Auto-generated REST from schema; row-level limits (1000 max), anonymous role |
-| **Observability** | Prometheus → Grafana (with Infinity + LLM plugins) | 15s scrape interval |
-| **Admin** | pgAdmin 4 | Available on port 5050 |
+| **Observability** | Prometheus (15s scrape interval), 30+ custom `tigerfetch_*` metrics | Grafana available but not enabled by default in compose |
 | **Cloud** | Fly.io (`ams` region, 512 MB / 1 shared CPU, always-on) | Configured via `fly.toml` |
-| **Orchestration** | Docker Compose (6 services) | `tigerfetch`, `postgrest`, `prometheus`, `grafana`, `pgadmin`, `db` (optional) |
+| **Orchestration** | Docker Compose (3 active services) | `db` (Postgres), `tigerfetch`, `prometheus`. Optional: `grafana`, `postgrest`, `pgadmin` (commented out) |
 
 ---
 
@@ -186,7 +170,7 @@ This approach balances efficiency (parallelism) with politeness (not overwhelmin
 
 | Interface | Protocol | Direction | Rate Limits |
 |:---|:---|:---|:---|
-| RSS/Atom Feeds (×22 active) | HTTP GET → XML | Inbound | Semaphore-bounded (3 concurrent) |
+| RSS/Atom Feeds (×22 active) | HTTP GET → XML | Inbound | Semaphore-bounded (5 concurrent) |
 | NIST NVD v2.0 | HTTPS GET → JSON | Inbound | 5 req/30s (no key) · 50 req/30s (with key) |
 | CISA KEV | HTTPS GET → JSON | Inbound | On-demand (cursor-gated) |
 | FIRST.org EPSS | HTTPS GET → JSON | Inbound | Paginated, 100ms inter-page delay |
@@ -260,7 +244,7 @@ An additional ~15 feeds are documented but disabled with inline rationale (404s,
 | **JSONB storage for CVE data** | Preserves full upstream fidelity; indexed scalar columns (CVSS, EPSS) enable fast queries |
 | **Monthly partitioning for EPSS** | ~300k rows/day requires partition pruning for query performance |
 | **Cursor-based checkpointing** | Enables idempotent restarts; no duplicate ingestion after crash/redeploy |
-| **Semaphore-bounded RSS concurrency** | Prevents overwhelming upstream feed providers while maintaining parallelism |
+| **Semaphore-bounded RSS concurrency** | Feeds fetched concurrently (max 5) to balance throughput with upstream politeness |
 | **Exponential backoff on NVD** | Respects NVD rate limits (429/503); avoids IP bans |
 | **Rust → Go migration** | Broader contributor pool, simpler dependency management, faster compile times |
 | **PostgREST over custom API** | Zero-code API generation from schema; views become endpoints automatically |
@@ -282,4 +266,4 @@ An additional ~15 feeds are documented but disabled with inline rationale (404s,
 
 ---
 
-*Generated: 8 February 2026*
+*Generated: 8 February 2026 · Updated: 29 March 2026*

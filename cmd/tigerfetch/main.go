@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,6 +27,13 @@ var (
 )
 
 func main() {
+	// Configure structured logging level from LOG_LEVEL env var
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(os.Getenv("LOG_LEVEL"))); err != nil {
+		level = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+
 	log.Println("Starting TigerFetch...")
 
 	// Record build info and start time
@@ -148,7 +157,7 @@ func main() {
 		}()
 	}
 
-	// Run RSS/Atom feed ingestor
+	// Run RSS/Atom feed ingestor with bounded concurrency
 	if len(cfg.Feeds) > 0 {
 		go func() {
 			client := ingestor.New(pool)
@@ -157,12 +166,22 @@ func main() {
 				log.Printf("Invalid ingest_interval, using default 1h: %v", err)
 				interval = 1 * time.Hour
 			}
+			const maxConcurrent = 5
+			sem := make(chan struct{}, maxConcurrent)
 			for {
+				var wg sync.WaitGroup
 				for _, feedCfg := range cfg.Feeds {
-					if err := client.FetchAndSave(ctx, feedCfg); err != nil {
-						log.Printf("Feed ingestion error (%s): %v", feedCfg.Name, err)
-					}
+					wg.Add(1)
+					sem <- struct{}{} // acquire slot
+					go func(fc config.Feed) {
+						defer wg.Done()
+						defer func() { <-sem }() // release slot
+						if err := client.FetchAndSave(ctx, fc); err != nil {
+							log.Printf("Feed ingestion error (%s): %v", fc.Name, err)
+						}
+					}(feedCfg)
 				}
+				wg.Wait()
 				time.Sleep(interval)
 			}
 		}()

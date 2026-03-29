@@ -36,6 +36,9 @@ go.work
 Config.toml
 !Config.toml.example
 
+# MCP server config (contains local DB credentials)
+.mcp.json
+
 # Logs
 *.log
 
