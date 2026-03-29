@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------
 # Build stage
 # -----------------------------------------------------------------
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /app
 
 # 1) Copy module files and download dependencies

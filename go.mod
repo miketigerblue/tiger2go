@@ -1,8 +1,8 @@
 module tiger2go
 
-go 1.24.0
+go 1.26.0
 
-toolchain go1.24.11
+toolchain go1.26.1
 
 require (
 	github.com/jackc/pgx/v5 v5.8.0
