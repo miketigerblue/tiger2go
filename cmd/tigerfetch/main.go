@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -34,7 +33,7 @@ func main() {
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
-	log.Println("Starting TigerFetch...")
+	slog.Info("Starting TigerFetch...")
 
 	// Record build info and start time
 	metrics.RecordBuildInfo(version, commit)
@@ -43,12 +42,14 @@ func main() {
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	// Validate database URL is set
 	if cfg.DatabaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
+		slog.Error("DATABASE_URL is required")
+		os.Exit(1)
 	}
 
 	ctx := context.Background()
@@ -56,22 +57,24 @@ func main() {
 	defer cancel()
 
 	// Run database migrations
-	log.Println("Running database migrations...")
+	slog.Info("Running database migrations...")
 	if err := db.Migrate(cfg.DatabaseURL, "migrations"); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		slog.Error("Failed to run migrations", "error", err)
+		os.Exit(1)
 	}
 
 	// Create database connection pool
 	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("Failed to create database pool: %v", err)
+		slog.Error("Failed to create database pool", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
 	// Register pgxpool metrics collector
 	metrics.RegisterDBCollector(pool)
 
-	log.Println("Database connected successfully")
+	slog.Info("Database connected successfully")
 
 	// Start HTTP server for metrics/health
 	mux := http.NewServeMux()
@@ -90,9 +93,10 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Starting HTTP server on %s", cfg.ServerBind)
+		slog.Info("Starting HTTP server", "addr", cfg.ServerBind)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server error: %v", err)
+			slog.Error("HTTP server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -102,17 +106,21 @@ func main() {
 			runner := cve.NewNvdRunner(pool, cfg.NVD)
 			for {
 				if err := runner.Run(ctx); err != nil {
-					log.Printf("NVD runner error: %v", err)
+					slog.Error("NVD runner error", "error", err)
 				}
 				interval, err := cfg.NVD.GetPollDuration()
 				if err != nil {
-					log.Printf("Invalid NVD poll interval, using default 1h: %v", err)
+					slog.Warn("Invalid NVD poll interval, using default 1h", "error", err)
 					interval = 1 * time.Hour
 				}
 				if interval == 0 {
 					interval = 1 * time.Hour
 				}
-				time.Sleep(interval)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(interval):
+				}
 			}
 		}()
 	}
@@ -122,17 +130,21 @@ func main() {
 			runner := cve.NewKevRunner(pool, cfg.KEV)
 			for {
 				if err := runner.Run(ctx); err != nil {
-					log.Printf("KEV runner error: %v", err)
+					slog.Error("KEV runner error", "error", err)
 				}
 				interval, err := cfg.KEV.GetPollDuration()
 				if err != nil {
-					log.Printf("Invalid KEV poll interval, using default 1h: %v", err)
+					slog.Warn("Invalid KEV poll interval, using default 1h", "error", err)
 					interval = 1 * time.Hour
 				}
 				if interval == 0 {
 					interval = 1 * time.Hour
 				}
-				time.Sleep(interval)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(interval):
+				}
 			}
 		}()
 	}
@@ -142,17 +154,21 @@ func main() {
 			runner := cve.NewEpssRunner(pool, cfg.EPSS)
 			for {
 				if err := runner.Run(ctx); err != nil {
-					log.Printf("EPSS runner error: %v", err)
+					slog.Error("EPSS runner error", "error", err)
 				}
 				interval, err := cfg.EPSS.GetPollDuration()
 				if err != nil {
-					log.Printf("Invalid EPSS poll interval, using default 24h: %v", err)
+					slog.Warn("Invalid EPSS poll interval, using default 24h", "error", err)
 					interval = 24 * time.Hour
 				}
 				if interval == 0 {
 					interval = 24 * time.Hour
 				}
-				time.Sleep(interval)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(interval):
+				}
 			}
 		}()
 	}
@@ -163,7 +179,7 @@ func main() {
 			client := ingestor.New(pool)
 			interval, err := cfg.GetIngestDuration()
 			if err != nil {
-				log.Printf("Invalid ingest_interval, using default 1h: %v", err)
+				slog.Warn("Invalid ingest_interval, using default 1h", "error", err)
 				interval = 1 * time.Hour
 			}
 			const maxConcurrent = 5
@@ -177,31 +193,35 @@ func main() {
 						defer wg.Done()
 						defer func() { <-sem }() // release slot
 						if err := client.FetchAndSave(ctx, fc); err != nil {
-							log.Printf("Feed ingestion error (%s): %v", fc.Name, err)
+							slog.Error("Feed ingestion error", "feed", fc.Name, "error", err)
 						}
 					}(feedCfg)
 				}
 				wg.Wait()
-				time.Sleep(interval)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(interval):
+				}
 			}
 		}()
 	}
 
-	log.Println("TigerFetch started successfully")
+	slog.Info("TigerFetch started successfully")
 
 	// Wait for interrupt signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
 
-	log.Println("Shutting down...")
+	slog.Info("Shutting down...")
 	cancel() // Cancel context to signal goroutines to stop
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		slog.Error("Server shutdown error", "error", err)
 	}
 
-	log.Println("Shutdown complete")
+	slog.Info("Shutdown complete")
 }
