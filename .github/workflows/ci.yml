@@ -92,7 +92,7 @@ jobs:
       - name: Run Tests
         env:
           DATABASE_URL: postgres://postgres:password@localhost:5432/tiger2go_test?sslmode=disable
-        run: go test -v -race -cover ./...
+        run: go test -v -race -cover -p 1 ./...
 
   # -----------------------------------------------------------------------------
   # Job 4: Container Security (Trivy)
