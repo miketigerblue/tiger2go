@@ -17,7 +17,7 @@ type DBCollector struct {
 	constructing    *prometheus.Desc
 	acquireCount    *prometheus.Desc
 	acquireDuration *prometheus.Desc
-	emptyAcquire   *prometheus.Desc
+	emptyAcquire    *prometheus.Desc
 }
 
 // RegisterDBCollector creates and registers the pgxpool collector.
