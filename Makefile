@@ -8,6 +8,9 @@ all: lint audit test build
 # Application
 BINARY_NAME=tigerfetch
 ENTRY_POINT=./cmd/tigerfetch
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
 # ----------------------------------------------------------------------------
 # Tooling (repo-local installs)
@@ -45,7 +48,7 @@ $(GOSEC):
 # -----------------------------------------------------------------------------
 build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
-	go build -o $(BINARY_NAME) $(ENTRY_POINT)
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) $(ENTRY_POINT)
 
 run: ## Run the application locally
 	go run $(ENTRY_POINT)

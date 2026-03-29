@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"tiger2go/internal/config"
+	"tiger2go/internal/metrics"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/microcosm-cc/bluemonday"
@@ -29,27 +30,47 @@ func New(db *pgxpool.Pool) *Client {
 	}
 }
 
-func (c *Client) FetchAndSave(ctx context.Context, feedCfg config.Feed) error {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+func (c *Client) FetchAndSave(ctx context.Context, feedCfg config.Feed) (retErr error) {
+	start := time.Now()
+	defer func() {
+		metrics.FeedFetchDuration.WithLabelValues(feedCfg.Name).Observe(time.Since(start).Seconds())
+		if retErr != nil {
+			metrics.FeedFetches.WithLabelValues(feedCfg.Name, "error").Inc()
+		} else {
+			metrics.FeedFetches.WithLabelValues(feedCfg.Name, "success").Inc()
+			metrics.FeedLastSuccess.WithLabelValues(feedCfg.Name).Set(float64(time.Now().Unix()))
+		}
+	}()
+
+	fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	slog.Debug("Fetching feed", "url", feedCfg.URL)
-	feed, err := c.pf.ParseURLWithContext(feedCfg.URL, ctx)
+
+	httpStart := time.Now()
+	feed, err := c.pf.ParseURLWithContext(feedCfg.URL, fetchCtx)
+	metrics.UpstreamRequestDuration.WithLabelValues("feed").Observe(time.Since(httpStart).Seconds())
 	if err != nil {
 		return fmt.Errorf("failed to parse feed %s: %w", feedCfg.URL, err)
 	}
 
 	slog.Info("Fetched feed success", "title", feed.Title, "items", len(feed.Items), "url", feedCfg.URL)
 
-	count := 0
+	processed := 0
+	failed := 0
 	for _, item := range feed.Items {
 		if err := c.processItem(ctx, feedCfg, feed, item); err != nil {
 			slog.Error("Failed to process item", "guid", item.GUID, "error", err)
+			failed++
 			continue
 		}
-		count++
+		processed++
 	}
-	slog.Info("Processed items", "count", count, "feed", feedCfg.Name)
+
+	metrics.FeedItemsProcessed.WithLabelValues(feedCfg.Name).Add(float64(processed))
+	metrics.FeedItemsFailed.WithLabelValues(feedCfg.Name).Add(float64(failed))
+
+	slog.Info("Processed items", "count", processed, "feed", feedCfg.Name)
 
 	return nil
 }
@@ -61,6 +82,11 @@ func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gof
 		content = c.policy.Sanitize(item.Description)
 	}
 	summary := c.policy.Sanitize(item.Description)
+
+	// Track empty content
+	if content == "" && summary == "" {
+		metrics.FeedItemsEmptyContent.WithLabelValues(feedCfg.Name).Inc()
+	}
 
 	// 2. Resolve fields
 	guid := item.GUID
@@ -114,16 +140,20 @@ func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gof
 			$9, $10, $11, $12, $13,
 			$14, NOW()
 		)
-		ON CONFLICT (guid) DO NOTHING
+		ON CONFLICT (guid, feed_url) DO NOTHING
 	`
 
-	_, err = tx.Exec(ctx, archiveQuery,
+	archiveResult, err := tx.Exec(ctx, archiveQuery,
 		guid, item.Title, item.Link, published, content, summary, author, categories,
 		updated, feedCfg.URL, feedTitle, feedDesc, feedLang,
 		time.Now(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert archive: %w", err)
+	}
+
+	if archiveResult.RowsAffected() > 0 {
+		metrics.FeedItemsNew.WithLabelValues(feedCfg.Name).Inc()
 	}
 
 	// 4. Current Table (Upsert)
@@ -137,7 +167,7 @@ func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gof
 			$9, $10, $11, $12, $13,
 			$14, NOW()
 		)
-		ON CONFLICT (guid) DO UPDATE SET
+		ON CONFLICT (guid, feed_url) DO UPDATE SET
 			title = EXCLUDED.title,
 			link = EXCLUDED.link,
 			published = EXCLUDED.published,
@@ -152,13 +182,18 @@ func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gof
 			feed_updated = EXCLUDED.feed_updated
 	`
 
-	_, err = tx.Exec(ctx, currentQuery,
+	currentResult, err := tx.Exec(ctx, currentQuery,
 		guid, item.Title, item.Link, published, content, summary, author, categories,
 		updated, feedCfg.URL, feedTitle, feedDesc, feedLang,
 		time.Now(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to upsert current: %w", err)
+	}
+
+	// If archive was a no-op (already existed) but current did upsert, it's an update
+	if archiveResult.RowsAffected() == 0 && currentResult.RowsAffected() > 0 {
+		metrics.FeedItemsUpdated.WithLabelValues(feedCfg.Name).Inc()
 	}
 
 	return tx.Commit(ctx)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"tiger2go/internal/config"
+	"tiger2go/internal/metrics"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -51,11 +52,19 @@ func NewKevRunner(db *pgxpool.Pool, cfg config.KevConfig) *KevRunner {
 	}
 }
 
-func (r *KevRunner) Run(ctx context.Context) error {
+func (r *KevRunner) Run(ctx context.Context) (retErr error) {
 	if !r.cfg.Enabled {
 		slog.Info("KEV ingestion disabled")
 		return nil
 	}
+
+	start := time.Now()
+	defer func() {
+		metrics.KevRunDuration.Observe(time.Since(start).Seconds())
+		if retErr != nil {
+			metrics.KevFetches.WithLabelValues("error").Inc()
+		}
+	}()
 
 	url := r.cfg.URL
 	if url == "" {
@@ -80,6 +89,11 @@ func (r *KevRunner) Run(ctx context.Context) error {
 		cursor = t.Format(time.RFC3339)
 	}
 
+	// Record cursor lag
+	if t, err := time.Parse(time.RFC3339, cursor); err == nil {
+		metrics.KevCursorLag.Set(time.Since(t).Seconds())
+	}
+
 	existingCursor, err := r.getCursor(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get existing cursor: %w", err)
@@ -87,6 +101,7 @@ func (r *KevRunner) Run(ctx context.Context) error {
 
 	if existingCursor == cursor {
 		slog.Info("KEV catalog up-to-date", "cursor", cursor)
+		metrics.KevFetches.WithLabelValues("up_to_date").Inc()
 		return nil
 	}
 
@@ -102,6 +117,8 @@ func (r *KevRunner) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to update cursor: %w", err)
 	}
 
+	metrics.KevFetches.WithLabelValues("success").Inc()
+	metrics.KevVulnsProcessed.Add(float64(len(catalog.Vulnerabilities)))
 	slog.Info("KEV ingestion complete")
 	return nil
 }
@@ -113,7 +130,9 @@ func (r *KevRunner) fetchCatalog(ctx context.Context, url string) (*KevCatalog, 
 	}
 	req.Header.Set("User-Agent", "tigerfetch/1.0 (+https://tigerblue.app)")
 
+	httpStart := time.Now()
 	resp, err := r.client.Do(req)
+	metrics.UpstreamRequestDuration.WithLabelValues("kev").Observe(time.Since(httpStart).Seconds())
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +168,7 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 			INSERT INTO cve_enriched (cve_id, source, json, modified)
 			VALUES ($1, 'CISA-KEV', $2, $3)
 			ON CONFLICT (cve_id, source)
-			DO UPDATE SET 
+			DO UPDATE SET
 				json = EXCLUDED.json,
 				modified = EXCLUDED.modified
 		`, v.CveID, jsonBytes, modified)

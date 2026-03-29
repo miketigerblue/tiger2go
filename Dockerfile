@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------
 # Build stage
 # -----------------------------------------------------------------
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /app
 
 # 1) Copy module files and download dependencies
@@ -13,7 +13,9 @@ COPY . .
 
 # 3) Build the application
 # Results in /app/tigerfetch
-RUN go build -o tigerfetch ./cmd/tigerfetch
+ARG VERSION=dev
+ARG COMMIT=none
+RUN go build -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT}" -o tigerfetch ./cmd/tigerfetch
 
 # -----------------------------------------------------------------
 # Runtime stage

@@ -5,7 +5,7 @@ This document tracks the conversion of the `tigerfetch` Rust application to a Go
 ## 1. Project Overview
 **Goal:** Rewrite the `tigerfetch` OSINT ingestor in Go.
 **Target Stack:**
-- **Language:** Go 1.23+
+- **Language:** Go 1.24+
 - **Database:** PostgreSQL (pgx driver)
 - **Migrations:** Goose
 - **Config:** Viper
@@ -21,10 +21,10 @@ Following the Standard Go Project Layout:
 │   └── tigerfetch/        # Main application entry point
 ├── internal/
 │   ├── config/            # Configuration loading (Viper)
-│   ├── db/                # Database connection & queries (sqlc/pgx)
+│   ├── db/                # Database connection & queries (pgx/v5)
 │   ├── ingestor/          # Core RSS/Atom logic
-│   ├── cve/               # Specialized CVE handlers (NVD, EPSS)
-│   └── server/            # HTTP server for metrics/healthz
+│   ├── cve/               # Specialized CVE handlers (NVD, KEV, EPSS)
+│   └── metrics/           # Prometheus metrics, pgxpool collector, HTTP middleware
 ├── migrations/            # SQL migration files (Goose)
 ├── go.mod
 └── go.sum

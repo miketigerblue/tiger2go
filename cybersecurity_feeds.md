@@ -16,7 +16,7 @@ Every feed below is either U.S.-government public-domain, released under the UK 
 | 4 | **SANS Internet Storm Center Diaries** | <https://isc.sans.edu/rssfeed_full.xml> | Daily threat analysis | **CC BY-NC-SA 3.0 US** | Community-run diary posts analysing emerging attack trends, malware and exploits. Requires non-commercial use and attribution. |
 | 5 | **CERT-EU Security Advisories** | <https://cert.europa.eu/publications/threat-intelligence-rss> | EU-focused advisories & vulnerabilities | **CC BY 4.0** | Bulletins for EU institutions and agencies on newly disclosed vulnerabilities and threats. |
 
-All five feeds are enabled in `Cargo.toml` and ingested hourly by default (or at the feed’s own `<ttl>` cadence if provided).
+All five feeds are enabled in `Config.toml` and ingested at the configured `ingest_interval` (default: 1 hour).
 
 ---
 
@@ -50,10 +50,10 @@ The dashboard displays this attribution in the article card footer and again in 
 ## 🛠 Adding a new feed
 
 1. **Check the licence** – look for CC, OGL, US-Gov PD, or equivalent.  When in doubt, e-mail the publisher.
-2. **Update `Cargo.toml`** – add `licence = "…"` and appropriate tags.
+2. **Update `Config.toml`** – add a `[[feeds]]` block with `name`, `url`, `feed_type`, and `tags`.
 3. **Limit excerpt** – the public cache stores **≤ 100 characters** of AI-generated summary and the original headline only.
-4. **Run `cargo test`** – ensure the parser and licence checker pass.
-5. **Deploy** – watch logs for `LicenceWarning` on first ingest.
+4. **Run `make test`** – ensure parsing and ingestion pass.
+5. **Deploy** – rebuild with `docker compose build && docker compose up` and watch logs for errors.
 
 ---
 
