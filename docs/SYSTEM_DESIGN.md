@@ -379,7 +379,7 @@ tags            = ["government", "alerts"]
 
 ### 7.1 Metrics (Prometheus)
 
-**40+ metrics exposed at `GET /metrics` with prefix `tigerfetch_`.**
+**38 metrics exposed at `GET /metrics` with prefix `tigerfetch_`.**
 
 #### Feed Ingestion Metrics
 

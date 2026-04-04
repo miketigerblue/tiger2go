@@ -66,7 +66,7 @@ Data sources → ingestion → normalisation → storage → downstream analysis
 
 ### Prerequisites
 *   Go 1.26+
-*   PostgreSQL 14+
+*   PostgreSQL 16+
 
 ### Building
 
@@ -120,8 +120,17 @@ Configuration is handled via `Config.toml` and environment variables. Key sectio
 | :--- | :--- | :--- |
 | Global | `database_url` | Postgres DSN connection string |
 | Global | `server_bind` | Host:Port for metrics server (default `0.0.0.0:9101`) |
-| `[nvd]` | `api_key` | Optional NVD API Key for higher rate limits |
+| Global | `ingest_interval` | Feed polling interval (default `1h`) |
+| `[[feeds]]` | `name`, `url`, `feed_type`, `tags` | RSS/Atom feed sources |
+| `[nvd]` | `enabled` | Toggle NVD ingestion |
+| `[nvd]` | `api_key` | Optional NVD API key for higher rate limits |
+| `[nvd]` | `poll_interval` | NVD polling interval |
+| `[nvd]` | `page_size` | Results per NVD API page |
 | `[epss]` | `enabled` | Toggle EPSS ingestion (files are large) |
+| `[epss]` | `poll_interval` | EPSS polling interval |
+| `[epss]` | `page_size` | EPSS API page size |
+| `[kev]` | `enabled` | Toggle CISA KEV ingestion |
+| `[kev]` | `poll_interval` | KEV polling interval |
 
 ## 🏗️ Project Structure
 

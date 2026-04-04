@@ -15,10 +15,9 @@ type Config struct {
 	ServerBind     string `mapstructure:"server_bind"`
 	Feeds          []Feed `mapstructure:"feeds"`
 
-	NVD   NvdConfig   `mapstructure:"nvd"`
-	MITRE MitreConfig `mapstructure:"mitre"`
-	EPSS  EpssConfig  `mapstructure:"epss"`
-	KEV   KevConfig   `mapstructure:"kev"`
+	NVD  NvdConfig  `mapstructure:"nvd"`
+	EPSS EpssConfig `mapstructure:"epss"`
+	KEV  KevConfig  `mapstructure:"kev"`
 }
 
 // Feed represents a single RSS/Atom source configuration.
@@ -35,11 +34,6 @@ type NvdConfig struct {
 	PageSize     int    `mapstructure:"page_size"`
 	ApiKey       string `mapstructure:"api_key"`
 	URL          string `mapstructure:"url"`
-}
-
-type MitreConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	PollInterval string `mapstructure:"poll_interval"`
 }
 
 type EpssConfig struct {
@@ -95,10 +89,6 @@ func (c *Config) GetIngestDuration() (time.Duration, error) {
 }
 
 func (c *NvdConfig) GetPollDuration() (time.Duration, error) {
-	return time.ParseDuration(c.PollInterval)
-}
-
-func (c *MitreConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
 
