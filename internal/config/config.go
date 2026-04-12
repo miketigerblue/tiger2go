@@ -15,9 +15,10 @@ type Config struct {
 	ServerBind     string `mapstructure:"server_bind"`
 	Feeds          []Feed `mapstructure:"feeds"`
 
-	NVD  NvdConfig  `mapstructure:"nvd"`
-	EPSS EpssConfig `mapstructure:"epss"`
-	KEV  KevConfig  `mapstructure:"kev"`
+	NVD      NvdConfig      `mapstructure:"nvd"`
+	EPSS     EpssConfig     `mapstructure:"epss"`
+	KEV      KevConfig      `mapstructure:"kev"`
+	Alerting AlertingConfig `mapstructure:"alerting"`
 }
 
 // Feed represents a single RSS/Atom source configuration.
@@ -47,6 +48,19 @@ type KevConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	PollInterval string `mapstructure:"poll_interval"`
 	URL          string `mapstructure:"url"`
+}
+
+type AlertingConfig struct {
+	Enabled      bool            `mapstructure:"enabled"`
+	PollInterval string          `mapstructure:"poll_interval"`
+	Webhooks     []WebhookConfig `mapstructure:"webhooks"`
+	LookbackDays int             `mapstructure:"lookback_days"`
+}
+
+type WebhookConfig struct {
+	Name string `mapstructure:"name"`
+	URL  string `mapstructure:"url"`
+	Type string `mapstructure:"type"` // "slack" or "generic"
 }
 
 // Load reads configuration from config files and environment variables.
@@ -97,5 +111,9 @@ func (c *EpssConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *KevConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *AlertingConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
