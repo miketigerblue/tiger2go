@@ -159,17 +159,7 @@ func buildGenericPayload(sleepers []SleeperCVE) ([]byte, error) {
 		Sleepers:  make([]genericCVE, len(sleepers)),
 	}
 	for i, s := range sleepers {
-		out.Sleepers[i] = genericCVE{
-			CVEID:       s.CVEID,
-			EpssBefore:  s.EpssBefore,
-			EpssNow:     s.EpssNow,
-			Delta:       s.Delta,
-			PctChange:   s.PctChange,
-			Percentile:  s.Percentile,
-			DateBefore:  s.DateBefore,
-			DateNow:     s.DateNow,
-			Description: s.Description,
-		}
+		out.Sleepers[i] = genericCVE(s)
 	}
 	return json.Marshal(out)
 }
