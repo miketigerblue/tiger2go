@@ -74,7 +74,7 @@ const testRSSXSS = `<?xml version="1.0" encoding="UTF-8"?>
       <title>XSS Test</title>
       <link>https://example.com/xss</link>
       <guid>test-guid-xss</guid>
-      <description>&lt;script&gt;alert('xss')&lt;/script&gt;Legit description</description>
+      <description><![CDATA[<script>alert('xss')</script><p>Legit description</p><img src=x onerror="alert(1)">]]></description>
     </item>
   </channel>
 </rss>`
@@ -255,12 +255,14 @@ func TestFetchAndSave_XSSSanitization(t *testing.T) {
 	err := client.FetchAndSave(ctx, feedCfg)
 	require.NoError(t, err)
 
-	// Script tag should be stripped by bluemonday
+	// Script tags and event handlers should be stripped by bluemonday
 	var summary string
 	err = testPool.QueryRow(ctx, "SELECT summary FROM archive WHERE guid = 'test-guid-xss' AND feed_url = $1", mockServer.URL).Scan(&summary)
 	require.NoError(t, err)
-	assert.NotContains(t, summary, "<script>")
-	assert.Contains(t, summary, "Legit description")
+	assert.NotContains(t, summary, "<script>", "script tags must be stripped")
+	assert.NotContains(t, summary, "onerror", "event handlers must be stripped")
+	assert.NotContains(t, summary, "alert(", "JS payloads must be stripped")
+	assert.Contains(t, summary, "Legit description", "safe content must be preserved")
 
 	_, _ = testPool.Exec(ctx, "DELETE FROM archive WHERE feed_url = $1", mockServer.URL)
 	_, _ = testPool.Exec(ctx, "DELETE FROM current WHERE feed_url = $1", mockServer.URL)

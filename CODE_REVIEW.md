@@ -65,9 +65,12 @@ Reviewed: 2026-04-04
 
 ## P3 — Testing gaps
 
-- [ ] **No unit tests for:** `internal/config/`, `internal/db/`, `internal/metrics/`, `cmd/tigerfetch/`
+- [x] **No unit tests for:** `internal/config/`, `internal/metrics/`
+  **Fixed:** Added `config_test.go` (duration parsing, defaults, edge cases) and `middleware_test.go` (normalizePath, status capture, handler wrapping).
+  **Remaining:** `internal/db/` and `cmd/tigerfetch/` are thin wrappers around pgxpool/goose and main orchestration — lower value for unit tests.
 
-- [ ] **NVD `fetchWithRetry` has zero test coverage** — most complex control flow in codebase.
+- [x] **NVD `fetchWithRetry` has zero test coverage** — most complex control flow in codebase.
+  **Fixed:** Added `nvd_unit_test.go` with tests for: success path, API key header propagation, 429 retry with backoff, context cancellation respected, unexpected status codes. Also full coverage of `extractCvssScore` (V3.1, V3.0 fallback, preference, nil/empty/invalid inputs).
 
-- [ ] **XSS sanitization test doesn't verify sanitization ran** — `internal/ingestor/ingestor_test.go:235-267`
-  Asserts `NotContains("<script>")` but test data uses entity-encoded tags — passes without sanitization.
+- [x] **XSS sanitization test doesn't verify sanitization ran** — `internal/ingestor/ingestor_test.go`
+  **Fixed:** Changed test data from entity-encoded to raw `<script>` + `onerror` payloads in CDATA. Assertions now verify script tags, event handlers, and JS payloads are all stripped while safe content is preserved.
