@@ -252,36 +252,108 @@
       }]
     },
     {
-      "type": "barchart",
+      "type": "bargauge",
       "title": "EPSS Score Distribution (Today)",
       "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
       "datasource": { "type": "postgres", "uid": "pg" },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "fillOpacity": 80 }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
         },
-        "overrides": []
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "0-1%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "1-5%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#96D98D", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "5-10%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FADE2A", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "10-30%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2CC0C", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "30-50%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "50-70%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF780A", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "70-90%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "90-100%" }, "properties": [{ "id": "color", "value": { "fixedColor": "#C4162A", "mode": "fixed" } }] }
+        ]
       },
-      "options": { "orientation": "vertical", "xTickLabelRotation": 0, "legend": { "displayMode": "hidden" }, "tooltip": { "mode": "single" } },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
       "targets": [{
-        "rawSql": "SELECT CASE WHEN epss < 0.01 THEN '0-0.01' WHEN epss < 0.05 THEN '0.01-0.05' WHEN epss < 0.1 THEN '0.05-0.1' WHEN epss < 0.2 THEN '0.1-0.2' WHEN epss < 0.3 THEN '0.2-0.3' WHEN epss < 0.5 THEN '0.3-0.5' WHEN epss < 0.7 THEN '0.5-0.7' WHEN epss < 0.9 THEN '0.7-0.9' ELSE '0.9-1.0' END AS bucket, COUNT(*) AS count FROM epss_daily WHERE as_of = (SELECT MAX(as_of) FROM epss_daily) GROUP BY bucket ORDER BY bucket",
-        "format": "table"
+        "rawSql": "SELECT COUNT(*) FILTER (WHERE epss < 0.01) AS \"0-1%\", COUNT(*) FILTER (WHERE epss >= 0.01 AND epss < 0.05) AS \"1-5%\", COUNT(*) FILTER (WHERE epss >= 0.05 AND epss < 0.1) AS \"5-10%\", COUNT(*) FILTER (WHERE epss >= 0.1 AND epss < 0.3) AS \"10-30%\", COUNT(*) FILTER (WHERE epss >= 0.3 AND epss < 0.5) AS \"30-50%\", COUNT(*) FILTER (WHERE epss >= 0.5 AND epss < 0.7) AS \"50-70%\", COUNT(*) FILTER (WHERE epss >= 0.7 AND epss < 0.9) AS \"70-90%\", COUNT(*) FILTER (WHERE epss >= 0.9) AS \"90-100%\" FROM epss_daily WHERE as_of = (SELECT MAX(as_of) FROM epss_daily)",
+        "format": "table",
+        "refId": "A"
       }]
     },
     {
-      "type": "timeseries",
-      "title": "EPSS Daily Record Count (Trend)",
-      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
+      "type": "stat",
+      "title": "EPSS Coverage",
+      "description": "Total CVEs scored today, days of historical data, and total records in the lake",
+      "gridPos": { "x": 12, "y": 18, "w": 6, "h": 4 },
       "datasource": { "type": "postgres", "uid": "pg" },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60 }, "color": { "fixedColor": "purple", "mode": "fixed" } },
+        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "today" }, "properties": [{ "id": "displayName", "value": "CVEs Scored Today" }] },
+          { "matcher": { "id": "byName", "options": "days" }, "properties": [{ "id": "displayName", "value": "Days Tracked" }, { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "total" }, "properties": [{ "id": "displayName", "value": "Total Records" }, { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "rawSql": "SELECT (SELECT COUNT(*) FROM epss_daily WHERE as_of = (SELECT MAX(as_of) FROM epss_daily))::bigint AS today, COUNT(DISTINCT as_of)::bigint AS days, COUNT(*)::bigint AS total FROM epss_daily",
+        "format": "table",
+        "refId": "A"
+      }]
+    },
+    {
+      "type": "gauge",
+      "title": "EPSS Ingest Health (Last 7 Days)",
+      "description": "Days with full ingest (>320k records) out of the last 7 calendar days",
+      "gridPos": { "x": 18, "y": 18, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 7, "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 5 },
+            { "color": "green", "value": 7 }
+          ]}
+        },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "hidden" }, "tooltip": { "mode": "single" } },
+      "options": { "showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [{
-        "rawSql": "SELECT as_of AS time, COUNT(*) AS records FROM epss_daily GROUP BY as_of ORDER BY as_of",
-        "format": "time_series"
+        "rawSql": "SELECT COUNT(*)::bigint AS healthy_days FROM (SELECT as_of, COUNT(*) AS n FROM epss_daily WHERE as_of >= (SELECT MAX(as_of) FROM epss_daily) - INTERVAL '6 days' GROUP BY as_of HAVING COUNT(*) >= 320000) sub",
+        "format": "table",
+        "refId": "A"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "EPSS Daily Ingest Log",
+      "gridPos": { "x": 12, "y": 22, "w": 12, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "records" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 200000 },
+                { "color": "yellow", "value": 300000 },
+                { "color": "green", "value": 320000 }
+              ]}}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "date" },
+            "properties": [{ "id": "custom.width", "value": 100 }]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "date", "desc": true }], "footer": { "show": false } },
+      "targets": [{
+        "rawSql": "SELECT as_of::text AS date, COUNT(*)::bigint AS records FROM epss_daily GROUP BY as_of ORDER BY as_of DESC LIMIT 10",
+        "format": "table",
+        "refId": "A"
       }]
     },
 

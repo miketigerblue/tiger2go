@@ -1,10 +1,16 @@
 {
   "uid": "tigerfetch-ops",
   "title": "TigerFetch Operations",
-  "tags": ["tigerfetch", "provisioned"],
+  "tags": [
+    "tigerfetch",
+    "provisioned"
+  ],
   "timezone": "browser",
   "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "fiscalYearStartMonth": 0,
   "liveNow": false,
   "schemaVersion": 39,
@@ -14,11 +20,17 @@
       {
         "name": "feed",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "query": "label_values(tigerfetch_feed_fetches_total, feed_name)",
         "includeAll": true,
         "allValue": ".*",
-        "current": { "text": "All", "value": "$__all" },
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
         "multi": true,
         "sort": 1,
         "refresh": 2
@@ -26,11 +38,17 @@
       {
         "name": "source",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "query": "label_values(tigerfetch_upstream_request_duration_seconds_count, source)",
         "includeAll": true,
         "allValue": ".*",
-        "current": { "text": "All", "value": "$__all" },
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
         "multi": true,
         "sort": 1,
         "refresh": 2
@@ -41,557 +59,2208 @@
     {
       "type": "row",
       "title": "System Overview",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
       "collapsed": false
     },
     {
       "type": "stat",
       "title": "Uptime",
-      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "time() - tigerfetch_start_time_seconds", "legendFormat": "Uptime" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "time() - tigerfetch_start_time_seconds",
+          "legendFormat": "Uptime",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "Version",
-      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "name", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "tigerfetch_build_info", "legendFormat": "{{version}} ({{commit}})" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "tigerfetch_build_info",
+          "legendFormat": "{{version}} ({{commit}})",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "Active Feeds (last 1h)",
-      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "red", "value": null },
-            { "color": "yellow", "value": 15 },
-            { "color": "green", "value": 20 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 15
+              },
+              {
+                "color": "green",
+                "value": 20
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "count(time() - tigerfetch_feed_last_success_timestamp < 3600)", "legendFormat": "Active" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "count(time() - tigerfetch_feed_last_success_timestamp < 3600)",
+          "legendFormat": "Active",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "Items Ingested (24h)",
-      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "sum(increase(tigerfetch_feed_items_processed_total[24h]))", "legendFormat": "Feed Items" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(tigerfetch_feed_items_processed_total[24h]))",
+          "legendFormat": "Feed Items",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "NVD Cursor Lag",
-      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 3600 },
-            { "color": "red", "value": 86400 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3600
+              },
+              {
+                "color": "red",
+                "value": 86400
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "tigerfetch_nvd_cursor_lag_seconds", "legendFormat": "NVD Lag" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "tigerfetch_nvd_cursor_lag_seconds",
+          "legendFormat": "NVD Lag",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "DB Pool Usage",
-      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
           "min": 0,
           "max": 100,
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 70 },
-            { "color": "red", "value": 90 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "tigerfetch_db_pool_acquired_conns / tigerfetch_db_pool_max_conns * 100", "legendFormat": "Pool %" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "tigerfetch_db_pool_acquired_conns / tigerfetch_db_pool_max_conns * 100",
+          "legendFormat": "Pool %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
-
     {
       "type": "row",
       "title": "Feed Ingestion",
-      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
       "collapsed": false
     },
     {
       "type": "table",
       "title": "Feed Staleness",
-      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 10 },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 10
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": { "align": "auto", "filterable": true }
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Value" },
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
             "properties": [
-              { "id": "unit", "value": "s" },
-              { "id": "displayName", "value": "Since Last Success" },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-                { "color": "green", "value": null },
-                { "color": "yellow", "value": 3600 },
-                { "color": "red", "value": 7200 }
-              ]}},
-              { "id": "custom.displayMode", "value": "color-background-solid" }
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "displayName",
+                "value": "Since Last Success"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 3600
+                    },
+                    {
+                      "color": "red",
+                      "value": 7200
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background-solid"
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "feed_name" },
-            "properties": [{ "id": "displayName", "value": "Feed" }]
+            "matcher": {
+              "id": "byName",
+              "options": "feed_name"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Feed"
+              }
+            ]
           }
         ]
       },
-      "options": { "showHeader": true, "sortBy": [{ "displayName": "Since Last Success", "desc": true }] },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Since Last Success",
+            "desc": true
+          }
+        ]
+      },
       "transformations": [
-        { "id": "reduce", "options": { "reducers": ["lastNotNull"] } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "Value", "desc": true }] } }
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Value",
+                "desc": true
+              }
+            ]
+          }
+        }
       ],
-      "targets": [{ "expr": "time() - tigerfetch_feed_last_success_timestamp{feed_name=~\"$feed\"}", "format": "table", "instant": true }]
+      "targets": [
+        {
+          "expr": "time() - tigerfetch_feed_last_success_timestamp{feed_name=~\"$feed\"}",
+          "format": "table",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "Feed Fetch Success/Error Rate",
-      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 10 },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 10
+      },
       "fieldConfig": {
         "defaults": {
-          "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" }, "fillOpacity": 80 },
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 80
+          },
           "unit": "ops"
         },
         "overrides": [
           {
-            "matcher": { "id": "byRegexp", "options": ".*error.*" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*error.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum"] }, "tooltip": { "mode": "multi" } },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "sum(rate(tigerfetch_feed_fetches_total{feed_name=~\"$feed\", status=\"success\"}[$__rate_interval]))", "legendFormat": "success" },
-        { "expr": "sum(rate(tigerfetch_feed_fetches_total{feed_name=~\"$feed\", status=\"error\"}[$__rate_interval]))", "legendFormat": "error" }
-      ]
+        {
+          "expr": "sum(rate(tigerfetch_feed_fetches_total{feed_name=~\"$feed\", status=\"success\"}[$__rate_interval]))",
+          "legendFormat": "success",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(rate(tigerfetch_feed_fetches_total{feed_name=~\"$feed\", status=\"error\"}[$__rate_interval]))",
+          "legendFormat": "error",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "Feed Fetch Duration (p50 / p95 / p99)",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(tigerfetch_feed_fetch_duration_seconds_bucket{feed_name=~\"$feed\"}[$__rate_interval])) by (le))", "legendFormat": "p50" },
-        { "expr": "histogram_quantile(0.95, sum(rate(tigerfetch_feed_fetch_duration_seconds_bucket{feed_name=~\"$feed\"}[$__rate_interval])) by (le))", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, sum(rate(tigerfetch_feed_fetch_duration_seconds_bucket{feed_name=~\"$feed\"}[$__rate_interval])) by (le))", "legendFormat": "p99" }
-      ]
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(tigerfetch_feed_fetch_duration_seconds_bucket{feed_name=~\"$feed\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p50",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tigerfetch_feed_fetch_duration_seconds_bucket{feed_name=~\"$feed\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(tigerfetch_feed_fetch_duration_seconds_bucket{feed_name=~\"$feed\"}[$__rate_interval])) by (le))",
+          "legendFormat": "p99",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "bargauge",
       "title": "Items Processed per Feed (24h)",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "blue", "value": null },
-            { "color": "green", "value": 10 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 10
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "orientation": "horizontal", "displayMode": "gradient", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
-      "targets": [{ "expr": "increase(tigerfetch_feed_items_processed_total{feed_name=~\"$feed\"}[24h])", "legendFormat": "{{feed_name}}" }]
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_feed_items_processed_total{feed_name=~\"$feed\"}[24h])",
+          "legendFormat": "{{feed_name}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "New Items vs Updated Items",
-      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" }, "fillOpacity": 60 } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 60
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byFrameRefID", "options": "A" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
-          { "matcher": { "id": "byFrameRefID", "options": "B" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "sum(increase(tigerfetch_feed_items_new_total{feed_name=~\"$feed\"}[$__rate_interval]))", "legendFormat": "New", "refId": "A" },
-        { "expr": "sum(increase(tigerfetch_feed_items_updated_total{feed_name=~\"$feed\"}[$__rate_interval]))", "legendFormat": "Updated", "refId": "B" }
-      ]
+        {
+          "expr": "sum(increase(tigerfetch_feed_items_new_total{feed_name=~\"$feed\"}[$__rate_interval]))",
+          "legendFormat": "New",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(increase(tigerfetch_feed_items_updated_total{feed_name=~\"$feed\"}[$__rate_interval]))",
+          "legendFormat": "Updated",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "Feed Errors & Empty Content",
-      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20 } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byFrameRefID", "options": "A" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byFrameRefID", "options": "B" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "sum(rate(tigerfetch_feed_items_failed_total{feed_name=~\"$feed\"}[$__rate_interval]))", "legendFormat": "Failed Items", "refId": "A" },
-        { "expr": "sum(rate(tigerfetch_feed_items_empty_content_total{feed_name=~\"$feed\"}[$__rate_interval]))", "legendFormat": "Empty Content", "refId": "B" }
-      ]
+        {
+          "expr": "sum(rate(tigerfetch_feed_items_failed_total{feed_name=~\"$feed\"}[$__rate_interval]))",
+          "legendFormat": "Failed Items",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum(rate(tigerfetch_feed_items_empty_content_total{feed_name=~\"$feed\"}[$__rate_interval]))",
+          "legendFormat": "Empty Content",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
-
     {
       "type": "row",
-      "title": "CVE Enrichment — NVD",
-      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 1 },
+      "title": "CVE Enrichment \u2014 NVD",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 1
+      },
       "collapsed": false
     },
     {
       "type": "stat",
       "title": "NVD CVEs Processed (24h)",
-      "gridPos": { "x": 0, "y": 33, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
-        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } },
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "increase(tigerfetch_nvd_cves_processed_total[24h])", "legendFormat": "CVEs" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_nvd_cves_processed_total[24h])",
+          "legendFormat": "CVEs",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "Rate Limits (1h)",
-      "gridPos": { "x": 4, "y": 33, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 4,
+        "y": 33,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "red", "value": 1 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "increase(tigerfetch_nvd_rate_limits_total[1h])", "legendFormat": "429s" }]
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_nvd_rate_limits_total[1h])",
+          "legendFormat": "429s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "CVEs Without CVSS (24h)",
-      "gridPos": { "x": 8, "y": 33, "w": 4, "h": 4 },
+      "gridPos": {
+        "x": 8,
+        "y": 33,
+        "w": 4,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 100 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "increase(tigerfetch_nvd_cves_without_cvss_total[24h])", "legendFormat": "No CVSS" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_nvd_cves_without_cvss_total[24h])",
+          "legendFormat": "No CVSS",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "NVD Run Duration",
-      "gridPos": { "x": 12, "y": 33, "w": 12, "h": 8 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 15 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "gridPos": {
+        "x": 12,
+        "y": 33,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "histogram_quantile(0.95, rate(tigerfetch_nvd_run_duration_seconds_bucket[$__rate_interval]))", "legendFormat": "p95 run duration" }
-      ]
+        {
+          "expr": "histogram_quantile(0.95, rate(tigerfetch_nvd_run_duration_seconds_bucket[$__rate_interval]))",
+          "legendFormat": "p95 run duration",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "NVD Fetch Outcomes",
-      "gridPos": { "x": 0, "y": 37, "w": 6, "h": 8 },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" }, "fillOpacity": 80 } },
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 80
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byRegexp", "options": ".*error.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": ".*success.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*error.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*success.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "increase(tigerfetch_nvd_fetches_total[$__rate_interval])", "legendFormat": "{{status}}" }]
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_nvd_fetches_total[$__rate_interval])",
+          "legendFormat": "{{status}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "NVD Cursor Lag Over Time",
-      "gridPos": { "x": 6, "y": 37, "w": 6, "h": 8 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
-      "targets": [{ "expr": "tigerfetch_nvd_cursor_lag_seconds", "legendFormat": "Cursor Lag" }]
+      "gridPos": {
+        "x": 6,
+        "y": 37,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "tigerfetch_nvd_cursor_lag_seconds",
+          "legendFormat": "Cursor Lag",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
-
     {
       "type": "row",
-      "title": "CVE Enrichment — EPSS & KEV",
-      "gridPos": { "x": 0, "y": 45, "w": 24, "h": 1 },
+      "title": "CVE Enrichment \u2014 EPSS & KEV",
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 1
+      },
       "collapsed": false
     },
     {
       "type": "stat",
       "title": "EPSS Cursor Lag",
-      "gridPos": { "x": 0, "y": 46, "w": 3, "h": 4 },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 3,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 86400 },
-            { "color": "red", "value": 172800 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 86400
+              },
+              {
+                "color": "red",
+                "value": 172800
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "tigerfetch_epss_cursor_lag_seconds", "legendFormat": "EPSS Lag" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "tigerfetch_epss_cursor_lag_seconds",
+          "legendFormat": "EPSS Lag",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "EPSS Records (24h)",
-      "gridPos": { "x": 3, "y": 46, "w": 3, "h": 4 },
+      "gridPos": {
+        "x": 3,
+        "y": 46,
+        "w": 3,
+        "h": 4
+      },
       "fieldConfig": {
-        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } },
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "increase(tigerfetch_epss_records_processed_total[24h])", "legendFormat": "Records" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_epss_records_processed_total[24h])",
+          "legendFormat": "Records",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "EPSS Run Outcomes",
-      "gridPos": { "x": 6, "y": 46, "w": 6, "h": 8 },
+      "gridPos": {
+        "x": 6,
+        "y": 46,
+        "w": 6,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" }, "fillOpacity": 80 } },
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 80
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byRegexp", "options": ".*success.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": ".*error.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": ".*skipped.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*success.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*error.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*skipped.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "increase(tigerfetch_epss_runs_total[$__rate_interval])", "legendFormat": "{{status}}" }]
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_epss_runs_total[$__rate_interval])",
+          "legendFormat": "{{status}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "KEV Cursor Lag",
-      "gridPos": { "x": 12, "y": 46, "w": 3, "h": 4 },
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 3,
+        "h": 4
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 86400 },
-            { "color": "red", "value": 172800 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 86400
+              },
+              {
+                "color": "red",
+                "value": 172800
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "tigerfetch_kev_cursor_lag_seconds", "legendFormat": "KEV Lag" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "tigerfetch_kev_cursor_lag_seconds",
+          "legendFormat": "KEV Lag",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "stat",
       "title": "KEV Vulns (24h)",
-      "gridPos": { "x": 15, "y": 46, "w": 3, "h": 4 },
+      "gridPos": {
+        "x": 15,
+        "y": 46,
+        "w": 3,
+        "h": 4
+      },
       "fieldConfig": {
-        "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } },
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "increase(tigerfetch_kev_vulns_processed_total[24h])", "legendFormat": "Vulns" }]
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_kev_vulns_processed_total[24h])",
+          "legendFormat": "Vulns",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "KEV Fetch Outcomes",
-      "gridPos": { "x": 18, "y": 46, "w": 6, "h": 8 },
+      "gridPos": {
+        "x": 18,
+        "y": 46,
+        "w": 6,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" }, "fillOpacity": 80 } },
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 80
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byRegexp", "options": ".*success.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": ".*error.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": ".*up_to_date.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*success.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*error.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*up_to_date.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "increase(tigerfetch_kev_fetches_total[$__rate_interval])", "legendFormat": "{{status}}" }]
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "increase(tigerfetch_kev_fetches_total[$__rate_interval])",
+          "legendFormat": "{{status}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "EPSS / KEV Run Duration",
-      "gridPos": { "x": 0, "y": 50, "w": 12, "h": 8 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "histogram_quantile(0.95, rate(tigerfetch_epss_run_duration_seconds_bucket[$__rate_interval]))", "legendFormat": "EPSS p95" },
-        { "expr": "histogram_quantile(0.95, rate(tigerfetch_kev_run_duration_seconds_bucket[$__rate_interval]))", "legendFormat": "KEV p95" }
-      ]
+        {
+          "expr": "histogram_quantile(0.95, rate(tigerfetch_epss_run_duration_seconds_bucket[$__rate_interval]))",
+          "legendFormat": "EPSS p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(tigerfetch_kev_run_duration_seconds_bucket[$__rate_interval]))",
+          "legendFormat": "KEV p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "EPSS / KEV Cursor Lag Over Time",
-      "gridPos": { "x": 12, "y": 50, "w": 12, "h": 8 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "gridPos": {
+        "x": 12,
+        "y": 50,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "tigerfetch_epss_cursor_lag_seconds", "legendFormat": "EPSS Lag" },
-        { "expr": "tigerfetch_kev_cursor_lag_seconds", "legendFormat": "KEV Lag" }
-      ]
+        {
+          "expr": "tigerfetch_epss_cursor_lag_seconds",
+          "legendFormat": "EPSS Lag",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "tigerfetch_kev_cursor_lag_seconds",
+          "legendFormat": "KEV Lag",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
-
     {
       "type": "row",
       "title": "Upstream HTTP Performance",
-      "gridPos": { "x": 0, "y": 58, "w": 24, "h": 1 },
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 1
+      },
       "collapsed": false
     },
     {
       "type": "timeseries",
       "title": "Upstream Latency by Source (p50 / p95 / p99)",
-      "gridPos": { "x": 0, "y": 59, "w": 24, "h": 8 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "pointSize": 5, "showPoints": "auto" } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "pointSize": 5,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(tigerfetch_upstream_request_duration_seconds_bucket{source=~\"$source\"}[$__rate_interval])) by (le, source))", "legendFormat": "{{source}} p50" },
-        { "expr": "histogram_quantile(0.95, sum(rate(tigerfetch_upstream_request_duration_seconds_bucket{source=~\"$source\"}[$__rate_interval])) by (le, source))", "legendFormat": "{{source}} p95" },
-        { "expr": "histogram_quantile(0.99, sum(rate(tigerfetch_upstream_request_duration_seconds_bucket{source=~\"$source\"}[$__rate_interval])) by (le, source))", "legendFormat": "{{source}} p99" }
-      ]
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(tigerfetch_upstream_request_duration_seconds_bucket{source=~\"$source\"}[$__rate_interval])) by (le, source))",
+          "legendFormat": "{{source}} p50",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tigerfetch_upstream_request_duration_seconds_bucket{source=~\"$source\"}[$__rate_interval])) by (le, source))",
+          "legendFormat": "{{source}} p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(tigerfetch_upstream_request_duration_seconds_bucket{source=~\"$source\"}[$__rate_interval])) by (le, source))",
+          "legendFormat": "{{source}} p99",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
-
     {
       "type": "row",
       "title": "Database Connection Pool",
-      "gridPos": { "x": 0, "y": 67, "w": 24, "h": 1 },
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 1
+      },
       "collapsed": false
     },
     {
       "type": "gauge",
       "title": "Pool Utilization",
-      "gridPos": { "x": 0, "y": 68, "w": 6, "h": 8 },
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 6,
+        "h": 8
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
           "min": 0,
           "max": 100,
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 70 },
-            { "color": "red", "value": 90 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "options": { "showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "tigerfetch_db_pool_acquired_conns / tigerfetch_db_pool_max_conns * 100", "legendFormat": "Utilization" }]
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "tigerfetch_db_pool_acquired_conns / tigerfetch_db_pool_max_conns * 100",
+          "legendFormat": "Utilization",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "Connection Breakdown",
-      "gridPos": { "x": 6, "y": 68, "w": 10, "h": 8 },
+      "gridPos": {
+        "x": 6,
+        "y": 68,
+        "w": 10,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 30, "stacking": { "mode": "normal" } } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byFrameRefID", "options": "A" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }, { "id": "displayName", "value": "Idle" }] },
-          { "matcher": { "id": "byFrameRefID", "options": "B" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }, { "id": "displayName", "value": "Acquired" }] },
-          { "matcher": { "id": "byFrameRefID", "options": "C" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }, { "id": "displayName", "value": "Constructing" }] },
-          { "matcher": { "id": "byFrameRefID", "options": "D" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }, { "id": "displayName", "value": "Max" }, { "id": "custom.fillOpacity", "value": 0 }, { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }, { "id": "custom.stacking", "value": { "mode": "none" } }] }
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Idle"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Acquired"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Constructing"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "D"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "Max"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "tigerfetch_db_pool_idle_conns", "legendFormat": "Idle", "refId": "A" },
-        { "expr": "tigerfetch_db_pool_acquired_conns", "legendFormat": "Acquired", "refId": "B" },
-        { "expr": "tigerfetch_db_pool_constructing_conns", "legendFormat": "Constructing", "refId": "C" },
-        { "expr": "tigerfetch_db_pool_max_conns", "legendFormat": "Max", "refId": "D" }
-      ]
+        {
+          "expr": "tigerfetch_db_pool_idle_conns",
+          "legendFormat": "Idle",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "tigerfetch_db_pool_acquired_conns",
+          "legendFormat": "Acquired",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "tigerfetch_db_pool_constructing_conns",
+          "legendFormat": "Constructing",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "tigerfetch_db_pool_max_conns",
+          "legendFormat": "Max",
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "Acquire Rate & Empty Acquires",
-      "gridPos": { "x": 16, "y": 68, "w": 8, "h": 8 },
+      "gridPos": {
+        "x": 16,
+        "y": 68,
+        "w": 8,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byFrameRefID", "options": "B" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "rate(tigerfetch_db_pool_acquire_count_total[$__rate_interval])", "legendFormat": "Acquires/s", "refId": "A" },
-        { "expr": "rate(tigerfetch_db_pool_empty_acquire_total[$__rate_interval])", "legendFormat": "Empty Acquires/s", "refId": "B" }
-      ]
+        {
+          "expr": "rate(tigerfetch_db_pool_acquire_count_total[$__rate_interval])",
+          "legendFormat": "Acquires/s",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "rate(tigerfetch_db_pool_empty_acquire_total[$__rate_interval])",
+          "legendFormat": "Empty Acquires/s",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
-
     {
       "type": "row",
       "title": "HTTP Server & Go Runtime",
-      "gridPos": { "x": 0, "y": 76, "w": 24, "h": 1 },
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 24,
+        "h": 1
+      },
       "collapsed": false
     },
     {
       "type": "timeseries",
       "title": "HTTP Request Rate by Path",
-      "gridPos": { "x": 0, "y": 77, "w": 8, "h": 8 },
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" }, "fillOpacity": 80 } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum(rate(tigerfetch_http_requests_total[$__rate_interval])) by (path)", "legendFormat": "{{path}}" }]
+      "gridPos": {
+        "x": 0,
+        "y": 77,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 80
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(tigerfetch_http_requests_total[$__rate_interval])) by (path)",
+          "legendFormat": "{{path}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "Goroutines",
-      "gridPos": { "x": 8, "y": 77, "w": 8, "h": 8 },
+      "gridPos": {
+        "x": 8,
+        "y": 77,
+        "w": 8,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15
+          }
+        },
         "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
-      "targets": [{ "expr": "go_goroutines", "legendFormat": "Goroutines" }]
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "expr": "go_goroutines",
+          "legendFormat": "Goroutines",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     },
     {
       "type": "timeseries",
       "title": "Memory & CPU",
-      "gridPos": { "x": 16, "y": 77, "w": 8, "h": 8 },
+      "gridPos": {
+        "x": 16,
+        "y": 77,
+        "w": 8,
+        "h": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 15 } },
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15
+          }
+        },
         "overrides": [
-          { "matcher": { "id": "byFrameRefID", "options": "C" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "custom.axisPlacement", "value": "right" }] }
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
         ]
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
       "targets": [
-        { "expr": "process_resident_memory_bytes", "legendFormat": "RSS", "refId": "A" },
-        { "expr": "go_memstats_heap_alloc_bytes", "legendFormat": "Heap", "refId": "B" },
-        { "expr": "rate(process_cpu_seconds_total[$__rate_interval])", "legendFormat": "CPU", "refId": "C" }
-      ]
+        {
+          "expr": "process_resident_memory_bytes",
+          "legendFormat": "RSS",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "go_memstats_heap_alloc_bytes",
+          "legendFormat": "Heap",
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "rate(process_cpu_seconds_total[$__rate_interval])",
+          "legendFormat": "CPU",
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
     }
   ]
 }
