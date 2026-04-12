@@ -36,10 +36,10 @@ func TestGetIngestDuration_Negative(t *testing.T) {
 
 func TestNvdGetPollDuration(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantDur  time.Duration
-		wantErr  bool
+		name    string
+		input   string
+		wantDur time.Duration
+		wantErr bool
 	}{
 		{"valid 1h", "1h", time.Hour, false},
 		{"valid 30s", "30s", 30 * time.Second, false},
