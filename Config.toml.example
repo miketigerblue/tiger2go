@@ -394,6 +394,28 @@ poll_interval = "24h"
 url           = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
 # ----------------------------------------------------------------------
+# Sleeper CVE Alerting
+# ----------------------------------------------------------------------
+# Detects CVEs that jump from <10% to >=50% EPSS over the lookback
+# window and sends notifications to configured webhooks.
+[alerting]
+enabled       = true
+poll_interval = "1h"
+lookback_days = 7
+
+# Slack incoming webhook:
+# [[alerting.webhooks]]
+# name = "slack-security"
+# url  = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+# type = "slack"
+
+# Generic HTTP webhook:
+# [[alerting.webhooks]]
+# name = "generic"
+# url  = "https://your-endpoint.example.com/alerts"
+# type = "generic"
+
+# ----------------------------------------------------------------------
 # Content length limits (configurable)
 # ----------------------------------------------------------------------
 [max_lengths]
