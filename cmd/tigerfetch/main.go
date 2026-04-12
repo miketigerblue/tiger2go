@@ -89,6 +89,7 @@ func main() {
 		Handler:      metrics.InstrumentHandler(mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  30 * time.Second,
 	}
 
 	// Start server in goroutine
@@ -100,20 +101,22 @@ func main() {
 		}
 	}()
 
+	// WaitGroup to track all worker goroutines for clean shutdown
+	var workers sync.WaitGroup
+
 	// Run CVE enrichment workers if enabled
 	if cfg.NVD.Enabled {
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			runner := cve.NewNvdRunner(pool, cfg.NVD)
 			for {
 				if err := runner.Run(ctx); err != nil {
 					slog.Error("NVD runner error", "error", err)
 				}
 				interval, err := cfg.NVD.GetPollDuration()
-				if err != nil {
+				if err != nil || interval <= 0 {
 					slog.Warn("Invalid NVD poll interval, using default 1h", "error", err)
-					interval = 1 * time.Hour
-				}
-				if interval == 0 {
 					interval = 1 * time.Hour
 				}
 				select {
@@ -126,18 +129,17 @@ func main() {
 	}
 
 	if cfg.KEV.Enabled {
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			runner := cve.NewKevRunner(pool, cfg.KEV)
 			for {
 				if err := runner.Run(ctx); err != nil {
 					slog.Error("KEV runner error", "error", err)
 				}
 				interval, err := cfg.KEV.GetPollDuration()
-				if err != nil {
+				if err != nil || interval <= 0 {
 					slog.Warn("Invalid KEV poll interval, using default 1h", "error", err)
-					interval = 1 * time.Hour
-				}
-				if interval == 0 {
 					interval = 1 * time.Hour
 				}
 				select {
@@ -150,18 +152,17 @@ func main() {
 	}
 
 	if cfg.EPSS.Enabled {
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			runner := cve.NewEpssRunner(pool, cfg.EPSS)
 			for {
 				if err := runner.Run(ctx); err != nil {
 					slog.Error("EPSS runner error", "error", err)
 				}
 				interval, err := cfg.EPSS.GetPollDuration()
-				if err != nil {
+				if err != nil || interval <= 0 {
 					slog.Warn("Invalid EPSS poll interval, using default 24h", "error", err)
-					interval = 24 * time.Hour
-				}
-				if interval == 0 {
 					interval = 24 * time.Hour
 				}
 				select {
@@ -175,10 +176,12 @@ func main() {
 
 	// Run RSS/Atom feed ingestor with bounded concurrency
 	if len(cfg.Feeds) > 0 {
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			client := ingestor.New(pool)
 			interval, err := cfg.GetIngestDuration()
-			if err != nil {
+			if err != nil || interval <= 0 {
 				slog.Warn("Invalid ingest_interval, using default 1h", "error", err)
 				interval = 1 * time.Hour
 			}
@@ -216,6 +219,11 @@ func main() {
 
 	slog.Info("Shutting down...")
 	cancel() // Cancel context to signal goroutines to stop
+
+	// Wait for all worker goroutines to finish before closing the pool
+	workers.Wait()
+	slog.Info("All workers stopped")
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 

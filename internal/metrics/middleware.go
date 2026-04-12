@@ -30,13 +30,25 @@ func (w *responseWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// normalizePath maps request paths to a fixed set of labels to prevent
+// cardinality explosion from arbitrary client-supplied paths.
+func normalizePath(path string) string {
+	switch path {
+	case "/metrics", "/healthz":
+		return path
+	default:
+		return "other"
+	}
+}
+
 // InstrumentHandler wraps an http.Handler with request count and duration metrics.
 func InstrumentHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		httpRequests.WithLabelValues(r.URL.Path, strconv.Itoa(rw.status)).Inc()
-		httpDuration.WithLabelValues(r.URL.Path).Observe(time.Since(start).Seconds())
+		label := normalizePath(r.URL.Path)
+		httpRequests.WithLabelValues(label, strconv.Itoa(rw.status)).Inc()
+		httpDuration.WithLabelValues(label).Observe(time.Since(start).Seconds())
 	})
 }

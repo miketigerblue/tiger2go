@@ -26,21 +26,21 @@ Reviewed: 2026-04-04
 
 ## P1 — Will cause problems under load or attack
 
-- [ ] **Prometheus label cardinality explosion (DoS vector)** — `internal/metrics/middleware.go:39`
+- [x] **Prometheus label cardinality explosion (DoS vector)** — `internal/metrics/middleware.go`
   Raw `r.URL.Path` used as metric label. Unbounded time series possible.
-  **Fix:** Map paths to a fixed set (`/metrics`, `/healthz`, `other`).
+  **Fixed:** `normalizePath()` maps to fixed set (`/metrics`, `/healthz`, `other`).
 
-- [ ] **Pool closed while goroutines still active** — `cmd/tigerfetch/main.go:72, 218-227`
-  `defer pool.Close()` runs on shutdown but worker goroutines have no WaitGroup.
-  **Fix:** Add `sync.WaitGroup` for all worker goroutines; wait before closing pool.
+- [x] **Pool closed while goroutines still active** — `cmd/tigerfetch/main.go`
+  `defer pool.Close()` ran on shutdown but worker goroutines had no WaitGroup.
+  **Fixed:** Added `sync.WaitGroup` for all workers; `workers.Wait()` before pool close.
 
-- [ ] **Missing HTTP IdleTimeout** — `cmd/tigerfetch/main.go:87-92`
-  No `IdleTimeout` — clients can hold connections indefinitely.
-  **Fix:** Add `IdleTimeout: 30 * time.Second`.
+- [x] **Missing HTTP IdleTimeout** — `cmd/tigerfetch/main.go`
+  No `IdleTimeout` — clients could hold connections indefinitely.
+  **Fixed:** Added `IdleTimeout: 30 * time.Second`.
 
-- [ ] **Negative poll interval causes tight loop** — `cmd/tigerfetch/main.go:111-166`
-  Duration parsing checks `== 0` but not `< 0`.
-  **Fix:** Validate `> 0`.
+- [x] **Negative poll interval causes tight loop** — `cmd/tigerfetch/main.go`
+  Duration parsing checked `== 0` but not `< 0`.
+  **Fixed:** Combined check: `err != nil || interval <= 0` triggers default.
 
 ---
 
