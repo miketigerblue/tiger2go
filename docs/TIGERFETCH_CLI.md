@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../tigerfetch_hunt_the_signal.png" alt="TigerFetch" width="200" />
+</p>
+
 # tigerfetch CLI (Python) — security triage utility
 
 This is a small dependency-free Python CLI for interacting with the Tigerfetch PostgREST API.

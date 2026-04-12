@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../tigerfetch_hunt_the_signal.png" alt="TigerFetch" width="200" />
+</p>
+
 # Feed validation
 
 > **Note:** The `validate_feeds` and `diagnose_feed` CLI tools were part of the original Rust implementation and have not yet been ported to Go. The Rust commands below are kept for reference. Feed validation in the Go codebase can be observed via the ingestor logs and Prometheus metrics (`tigerfetch_feed_fetches_total{status="error"}`).

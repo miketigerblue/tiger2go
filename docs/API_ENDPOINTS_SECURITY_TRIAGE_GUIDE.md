@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../tigerfetch_hunt_the_signal.png" alt="TigerFetch" width="200" />
+</p>
+
 # Tigerfetch PostgREST API (`schema: api`) — Endpoint Guide for Security Awareness & Triage
 
 **Audience:** platform security, SRE, SOC/IR, data governance  

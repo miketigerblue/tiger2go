@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../tigerfetch_hunt_the_signal.png" alt="TigerFetch" width="200" />
+</p>
+
 # TigerFetch System Design Document
 
 > **Version:** 1.1.1 | **Date:** 2026-03-29 | **Status:** Production

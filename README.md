@@ -1,4 +1,10 @@
-# Tiger2Go - TigerFetch
+<p align="center">
+  <img src="tigerfetch_hunt_the_signal.png" alt="TigerFetch — hunt the signal" width="400" />
+</p>
+
+<h1 align="center">Tiger2Go — TigerFetch</h1>
+
+<p align="center"><em>hunt_the_signal()</em></p>
 
 > **Mission:** Provide a reliable, observable, single-binary cybersecurity OSINT ingestion service that continuously collects, normalises, and stores threat intelligence from public feeds and vulnerability databases — giving security teams a queryable data lake for risk-informed decision making.
 
