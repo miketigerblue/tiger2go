@@ -14,15 +14,18 @@ import (
 
 // SleeperCVE represents a CVE that crossed a significant EPSS threshold.
 type SleeperCVE struct {
-	CVEID       string
-	EpssBefore  float64
-	EpssNow     float64
-	Delta       float64
-	PctChange   float64
-	Percentile  float64
-	DateBefore  string
-	DateNow     string
-	Description string
+	CVEID        string
+	EpssBefore   float64
+	EpssNow      float64
+	Delta        float64
+	PctChange    float64
+	Percentile   float64
+	DateBefore   string
+	DateNow      string
+	Description  string
+	CvssScore    *float64
+	CvssSeverity string
+	CWE          string
 }
 
 // Runner detects sleeper CVEs and sends webhook notifications.
@@ -143,7 +146,20 @@ func (r *Runner) detect(ctx context.Context, lookbackDays int) ([]SleeperCVE, er
 				(SELECT json->'descriptions'->0->>'value'
 				 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1),
 				''
-			) AS description
+			) AS description,
+			(SELECT cvss_base::float8
+			 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1
+			) AS cvss_score,
+			COALESCE(
+				(SELECT json->'metrics'->'cvssMetricV31'->0->'cvssData'->>'baseSeverity'
+				 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1),
+				''
+			) AS cvss_severity,
+			COALESCE(
+				(SELECT json->'weaknesses'->0->'description'->0->>'value'
+				 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1),
+				''
+			) AS cwe
 		FROM now_scores n
 		JOIN before_scores b ON n.cve_id = b.cve_id
 		WHERE b.epss < 0.10
@@ -165,6 +181,7 @@ func (r *Runner) detect(ctx context.Context, lookbackDays int) ([]SleeperCVE, er
 			&s.CVEID, &s.EpssBefore, &s.EpssNow, &s.Delta,
 			&s.PctChange, &s.Percentile,
 			&s.DateBefore, &s.DateNow, &s.Description,
+			&s.CvssScore, &s.CvssSeverity, &s.CWE,
 		); err != nil {
 			return nil, fmt.Errorf("scan sleeper row: %w", err)
 		}

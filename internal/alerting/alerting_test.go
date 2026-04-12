@@ -14,30 +14,60 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func ptr(f float64) *float64 { return &f }
+
 func TestBuildSlackPayload(t *testing.T) {
 	sleepers := []SleeperCVE{
 		{
-			CVEID:       "CVE-2025-71243",
-			EpssBefore:  0.0011,
-			EpssNow:     0.8368,
-			Delta:       0.8357,
-			PctChange:   75284.0,
-			Percentile:  0.9662,
-			DateBefore:  "2026-03-04",
-			DateNow:     "2026-04-11",
-			Description: "SPIP plugin RCE",
+			CVEID:        "CVE-2025-71243",
+			EpssBefore:   0.0011,
+			EpssNow:      0.8368,
+			Delta:        0.8357,
+			PctChange:    75284.0,
+			Percentile:   0.9662,
+			DateBefore:   "2026-03-04",
+			DateNow:      "2026-04-11",
+			Description:  "SPIP plugin RCE",
+			CvssScore:    ptr(9.8),
+			CvssSeverity: "CRITICAL",
+			CWE:          "CWE-94",
 		},
 	}
 
 	body, err := buildSlackPayload(sleepers)
 	require.NoError(t, err)
 
+	s := string(body)
 	var payload map[string]interface{}
 	require.NoError(t, json.Unmarshal(body, &payload))
 
 	blocks, ok := payload["blocks"].([]interface{})
 	require.True(t, ok, "expected blocks array")
-	assert.GreaterOrEqual(t, len(blocks), 4, "header + context + divider + 1 CVE")
+	assert.GreaterOrEqual(t, len(blocks), 4, "header + context + divider + 1 CVE + divider")
+
+	// Verify enriched fields appear
+	assert.Contains(t, s, "nvd.nist.gov/vuln/detail/CVE-2025-71243")
+	assert.Contains(t, s, "CVSS")
+	assert.Contains(t, s, "9.8")
+	assert.Contains(t, s, "CRITICAL")
+	assert.Contains(t, s, "CWE-94")
+	assert.Contains(t, s, "SPIP plugin RCE")
+}
+
+func TestBuildSlackPayload_NoCvss(t *testing.T) {
+	sleepers := []SleeperCVE{
+		{
+			CVEID:      "CVE-2025-99999",
+			EpssBefore: 0.01,
+			EpssNow:    0.55,
+			DateBefore: "2026-03-04",
+			DateNow:    "2026-04-11",
+		},
+	}
+
+	body, err := buildSlackPayload(sleepers)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "CVSS: _n/a_")
 }
 
 func TestBuildGenericPayload(t *testing.T) {
@@ -146,7 +176,7 @@ func TestWebhookSender_ErrorOnBadStatus(t *testing.T) {
 
 func TestBuildSlackPayload_TruncatesLongDescriptions(t *testing.T) {
 	longDesc := ""
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 300; i++ {
 		longDesc += "x"
 	}
 

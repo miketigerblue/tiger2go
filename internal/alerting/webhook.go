@@ -66,6 +66,34 @@ func (w WebhookSender) Send(ctx context.Context, sleepers []SleeperCVE) error {
 
 // --- Slack Block Kit payload ---
 
+func formatCvssBadge(score *float64, severity string) string {
+	if score == nil {
+		return "CVSS: _n/a_"
+	}
+	emoji := ":white_circle:"
+	switch {
+	case *score >= 9.0:
+		emoji = ":red_circle:"
+	case *score >= 7.0:
+		emoji = ":large_orange_circle:"
+	case *score >= 4.0:
+		emoji = ":large_yellow_circle:"
+	default:
+		emoji = ":large_green_circle:"
+	}
+	if severity != "" {
+		return fmt.Sprintf("%s CVSS *%.1f* (%s)", emoji, *score, severity)
+	}
+	return fmt.Sprintf("%s CVSS *%.1f*", emoji, *score)
+}
+
+func formatCWE(cwe string) string {
+	if cwe == "" || cwe == "NVD-CWE-noinfo" || cwe == "NVD-CWE-Other" {
+		return ""
+	}
+	return fmt.Sprintf(" | %s", cwe)
+}
+
 func buildSlackPayload(sleepers []SleeperCVE) ([]byte, error) {
 	blocks := []map[string]interface{}{
 		{
@@ -80,7 +108,11 @@ func buildSlackPayload(sleepers []SleeperCVE) ([]byte, error) {
 			"elements": []map[string]string{
 				{
 					"type": "mrkdwn",
-					"text": fmt.Sprintf("Comparing *%s* to *%s* | tigerfetch", sleepers[0].DateBefore, sleepers[0].DateNow),
+					"text": fmt.Sprintf(
+						"Baseline *%s* vs *%s* (%d-day lookback) | tigerfetch",
+						sleepers[0].DateBefore, sleepers[0].DateNow,
+						daysBetween(sleepers[0].DateBefore, sleepers[0].DateNow),
+					),
 				},
 			},
 		},
@@ -95,23 +127,40 @@ func buildSlackPayload(sleepers []SleeperCVE) ([]byte, error) {
 
 	for _, s := range sleepers[:limit] {
 		desc := s.Description
-		if len(desc) > 120 {
-			desc = desc[:117] + "..."
+		if len(desc) > 200 {
+			desc = desc[:197] + "..."
+		}
+
+		nvdLink := fmt.Sprintf("https://nvd.nist.gov/vuln/detail/%s", s.CVEID)
+
+		// Line 1: CVE ID (linked) + CVSS badge + CWE
+		line1 := fmt.Sprintf("*<%s|%s>*  %s%s",
+			nvdLink, s.CVEID,
+			formatCvssBadge(s.CvssScore, s.CvssSeverity),
+			formatCWE(s.CWE),
+		)
+
+		// Line 2: EPSS trajectory
+		line2 := fmt.Sprintf(
+			"EPSS: %.2f%% :arrow_right: *%.2f%%*  (+%.0f%%)  |  Percentile: *%.0f*",
+			s.EpssBefore*100, s.EpssNow*100, s.PctChange, s.Percentile*100,
+		)
+
+		// Line 3: Description
+		line3 := ""
+		if desc != "" {
+			line3 = fmt.Sprintf("\n>%s", desc)
 		}
 
 		blocks = append(blocks, map[string]interface{}{
 			"type": "section",
 			"text": map[string]string{
 				"type": "mrkdwn",
-				"text": fmt.Sprintf(
-					"*%s*\n%.2f%% → *%.2f%%* (+%.0f%%) | P%.0f\n_%s_",
-					s.CVEID,
-					s.EpssBefore*100, s.EpssNow*100, s.PctChange,
-					s.Percentile*100,
-					desc,
-				),
+				"text": fmt.Sprintf("%s\n%s%s", line1, line2, line3),
 			},
 		})
+
+		blocks = append(blocks, map[string]interface{}{"type": "divider"})
 	}
 
 	if len(sleepers) > 10 {
@@ -120,7 +169,7 @@ func buildSlackPayload(sleepers []SleeperCVE) ([]byte, error) {
 			"elements": []map[string]string{
 				{
 					"type": "mrkdwn",
-					"text": fmt.Sprintf("_...and %d more_", len(sleepers)-10),
+					"text": fmt.Sprintf("_...and %d more. Query your TigerFetch database for the full list._", len(sleepers)-10),
 				},
 			},
 		})
@@ -128,6 +177,15 @@ func buildSlackPayload(sleepers []SleeperCVE) ([]byte, error) {
 
 	payload := map[string]interface{}{"blocks": blocks}
 	return json.Marshal(payload)
+}
+
+func daysBetween(a, b string) int {
+	ta, err1 := time.Parse("2006-01-02", a)
+	tb, err2 := time.Parse("2006-01-02", b)
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	return int(tb.Sub(ta).Hours() / 24)
 }
 
 // --- Generic JSON payload ---
@@ -140,15 +198,18 @@ type genericPayload struct {
 }
 
 type genericCVE struct {
-	CVEID       string  `json:"cve_id"`
-	EpssBefore  float64 `json:"epss_before"`
-	EpssNow     float64 `json:"epss_now"`
-	Delta       float64 `json:"delta"`
-	PctChange   float64 `json:"pct_change"`
-	Percentile  float64 `json:"percentile"`
-	DateBefore  string  `json:"date_before"`
-	DateNow     string  `json:"date_now"`
-	Description string  `json:"description"`
+	CVEID        string   `json:"cve_id"`
+	EpssBefore   float64  `json:"epss_before"`
+	EpssNow      float64  `json:"epss_now"`
+	Delta        float64  `json:"delta"`
+	PctChange    float64  `json:"pct_change"`
+	Percentile   float64  `json:"percentile"`
+	DateBefore   string   `json:"date_before"`
+	DateNow      string   `json:"date_now"`
+	Description  string   `json:"description"`
+	CvssScore    *float64 `json:"cvss_score"`
+	CvssSeverity string   `json:"cvss_severity"`
+	CWE          string   `json:"cwe"`
 }
 
 func buildGenericPayload(sleepers []SleeperCVE) ([]byte, error) {
