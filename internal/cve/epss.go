@@ -178,7 +178,7 @@ func (r *EpssRunner) ensurePartition(ctx context.Context, date time.Time) error 
 	startOfMonth := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, time.UTC)
 	nextMonth := startOfMonth.AddDate(0, 1, 0)
 
-	partitionName := fmt.Sprintf("epss_daily_%d%02d", date.Year(), date.Month())
+	partitionName := fmt.Sprintf("epss_daily_y%dm%02d", date.Year(), date.Month())
 
 	query := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s
