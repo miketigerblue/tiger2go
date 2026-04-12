@@ -157,11 +157,13 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 	}
 
 	batch := &pgx.Batch{}
+	queued := 0
 
 	for _, v := range vulns {
 		jsonBytes, err := json.Marshal(v)
 		if err != nil {
-			continue // Skip malformed
+			slog.Error("Failed to marshal KEV vuln", "cve_id", v.CveID, "error", err)
+			continue
 		}
 
 		batch.Queue(`
@@ -172,12 +174,13 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 				json = EXCLUDED.json,
 				modified = EXCLUDED.modified
 		`, v.CveID, jsonBytes, modified)
+		queued++
 	}
 
 	br := r.db.SendBatch(ctx, batch)
 	defer func() { _ = br.Close() }()
 
-	for i := 0; i < len(vulns); i++ {
+	for i := 0; i < queued; i++ {
 		_, err := br.Exec()
 		if err != nil {
 			return fmt.Errorf("batch execution failed at index %d: %w", i, err)

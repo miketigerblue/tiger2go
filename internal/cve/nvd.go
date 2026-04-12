@@ -136,7 +136,10 @@ func (r *NvdRunner) processWindow(ctx context.Context, start, end time.Time) err
 		if baseURL == "" {
 			baseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 		}
-		u, _ := url.Parse(baseURL)
+		u, err := url.Parse(baseURL)
+		if err != nil {
+			return fmt.Errorf("invalid NVD URL %q: %w", baseURL, err)
+		}
 		q := u.Query()
 		q.Set("pubStartDate", startStr)
 		q.Set("pubEndDate", endStr)
@@ -191,8 +194,9 @@ func (r *NvdRunner) processWindow(ctx context.Context, start, end time.Time) err
 
 func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, error) {
 	backoff := 6 * time.Second
+	const maxRetries = 10
 
-	for {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 		if err != nil {
 			return nil, err
@@ -209,8 +213,12 @@ func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, 
 		if err != nil {
 			metrics.UpstreamRequestDuration.WithLabelValues("nvd").Observe(time.Since(httpStart).Seconds())
 			metrics.NvdFetches.WithLabelValues("error").Inc()
-			slog.Warn("NVD fetch failed, retrying", "url", urlStr, "error", err)
-			time.Sleep(backoff)
+			slog.Warn("NVD fetch failed, retrying", "url", urlStr, "error", err, "attempt", attempt+1)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
 			continue
 		}
 		metrics.UpstreamRequestDuration.WithLabelValues("nvd").Observe(time.Since(httpStart).Seconds())
@@ -229,8 +237,12 @@ func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, 
 		// Check for 429 or 503
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 			metrics.NvdRateLimits.Inc()
-			slog.Warn("NVD rate limited or unavailable", "status", resp.StatusCode)
-			time.Sleep(backoff)
+			slog.Warn("NVD rate limited or unavailable", "status", resp.StatusCode, "attempt", attempt+1)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
 			backoff *= 2
 			if backoff > 1*time.Minute {
 				backoff = 1 * time.Minute
@@ -241,10 +253,13 @@ func (r *NvdRunner) fetchWithRetry(ctx context.Context, urlStr string) ([]byte, 
 		metrics.NvdApiErrors.WithLabelValues(strconv.Itoa(resp.StatusCode)).Inc()
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
+
+	return nil, fmt.Errorf("NVD fetch failed after %d retries: %s", maxRetries, urlStr)
 }
 
 func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 	batch := &pgx.Batch{}
+	queued := 0
 
 	for _, item := range items {
 		// Convert the cve struct back to JSON for storage
@@ -275,12 +290,13 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 				cvss_base = EXCLUDED.cvss_base,
 				modified = EXCLUDED.modified
 		`, item.Cve.ID, cveJSON, cvssBase, modified)
+		queued++
 	}
 
 	br := r.db.SendBatch(ctx, batch)
 	defer func() { _ = br.Close() }()
 
-	for i := 0; i < len(items); i++ {
+	for i := 0; i < queued; i++ {
 		_, err := br.Exec()
 		if err != nil {
 			return fmt.Errorf("batch execution failed at index %d: %w", i, err)

@@ -129,8 +129,7 @@ func (r *EpssRunner) Run(ctx context.Context) (retErr error) {
 
 		pData, err := r.fetch(url)
 		if err != nil {
-			slog.Error("Failed to fetch EPSS page", "offset", offset, "error", err)
-			break
+			return fmt.Errorf("failed to fetch EPSS page at offset %d: %w", offset, err)
 		}
 
 		if len(pData.Data) == 0 {
@@ -138,8 +137,7 @@ func (r *EpssRunner) Run(ctx context.Context) (retErr error) {
 		}
 
 		if err := r.bulkInsert(ctx, pData.Data, date); err != nil {
-			slog.Error("Failed to bulk insert EPSS", "error", err)
-			return err
+			return fmt.Errorf("failed to bulk insert EPSS at offset %d: %w", offset, err)
 		}
 
 		offset += len(pData.Data)
