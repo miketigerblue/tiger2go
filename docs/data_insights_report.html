@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TigerFetch — Data Insights Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface-2: #1a2332;
+    --border: #1e2d3d;
+    --text: #e2e8f0;
+    --text-muted: #8892a4;
+    --accent: #f97316;
+    --accent-glow: rgba(249, 115, 22, 0.15);
+    --critical: #ef4444;
+    --high: #f97316;
+    --medium: #eab308;
+    --low: #22c55e;
+    --negligible: #3b82f6;
+    --cyan: #06b6d4;
+    --purple: #a855f7;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .hero {
+    text-align: center;
+    padding: 4rem 2rem 3rem;
+    background: linear-gradient(180deg, rgba(249, 115, 22, 0.08) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero img {
+    width: 120px;
+    height: auto;
+    margin-bottom: 1.5rem;
+    filter: drop-shadow(0 0 30px rgba(249, 115, 22, 0.3));
+  }
+
+  .hero h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #f97316, #fb923c, #fbbf24);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero .tagline {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-top: 0.5rem;
+  }
+
+  .hero .meta {
+    margin-top: 1.5rem;
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .hero .meta-item {
+    text-align: center;
+  }
+
+  .hero .meta-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .hero .meta-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .grid-full {
+    grid-column: 1 / -1;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: border-color 0.2s;
+  }
+
+  .card:hover {
+    border-color: rgba(249, 115, 22, 0.3);
+  }
+
+  .card h2 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .card h2 .num {
+    background: var(--accent);
+    color: var(--bg);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+  }
+
+  .chart-container {
+    position: relative;
+    width: 100%;
+  }
+
+  .chart-container.tall { height: 350px; }
+  .chart-container.medium { height: 280px; }
+  .chart-container.short { height: 220px; }
+
+  /* Pyramid */
+  .pyramid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 1rem 0;
+  }
+
+  .pyramid-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  .pyramid-bar {
+    height: 38px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: transform 0.2s;
+    margin: 0 auto;
+  }
+
+  .pyramid-bar:hover { transform: scaleX(1.02); }
+
+  .pyramid-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    width: 140px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .pyramid-count {
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    width: 100px;
+    flex-shrink: 0;
+  }
+
+  /* Sleeper table */
+  .sleeper-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  .sleeper-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sleeper-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid rgba(30, 45, 61, 0.5);
+    vertical-align: middle;
+  }
+
+  .sleeper-table tr:hover td {
+    background: rgba(249, 115, 22, 0.05);
+  }
+
+  .sleeper-cve {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+    color: var(--cyan);
+    font-size: 0.8rem;
+  }
+
+  .sleeper-bar-track {
+    background: var(--surface-2);
+    border-radius: 10px;
+    height: 20px;
+    position: relative;
+    overflow: hidden;
+    min-width: 200px;
+  }
+
+  .sleeper-bar-before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: var(--border);
+    border-radius: 10px 0 0 10px;
+    transition: width 1s ease-out;
+  }
+
+  .sleeper-bar-after {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: linear-gradient(90deg, var(--high), var(--critical));
+    border-radius: 10px;
+    transition: width 1.5s ease-out;
+  }
+
+  .delta {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: var(--critical);
+    font-size: 0.85rem;
+  }
+
+  .desc-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Velocity */
+  .velocity-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-top: 0.5rem;
+  }
+
+  .velocity-stat {
+    text-align: center;
+    padding: 1rem;
+    background: var(--surface-2);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .velocity-stat .value {
+    font-size: 1.8rem;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .velocity-stat .label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+  }
+
+  .velocity-stat.surge .value { color: var(--critical); }
+  .velocity-stat.cross50 .value { color: var(--high); }
+  .velocity-stat.cross10 .value { color: var(--medium); }
+  .velocity-stat.falling .value { color: var(--low); }
+
+  /* CWE Bubbles legend */
+  .cwe-note {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+    margin-top: 2rem;
+  }
+
+  .footer .sig {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    font-size: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  /* Takeaway banner */
+  .takeaway {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(239, 68, 68, 0.08));
+    border: 1px solid rgba(249, 115, 22, 0.25);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-top: 1.5rem;
+    text-align: center;
+  }
+
+  .takeaway .quote {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #f97316, #ef4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .takeaway .subtext {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+  }
+
+  @media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; }
+    .velocity-grid { grid-template-columns: repeat(2, 1fr); }
+    .hero h1 { font-size: 1.8rem; }
+    .hero .meta { gap: 1rem; }
+    .sleeper-bar-track { min-width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <img src="tigerfetch_hunt_the_signal.png" alt="TigerFetch" />
+  <h1>Data Insights Report</h1>
+  <div class="tagline">hunt_the_signal() &mdash; 39 days of threat intelligence</div>
+  <div class="meta">
+    <div class="meta-item">
+      <div class="meta-value">326,508</div>
+      <div class="meta-label">CVEs Scored Daily</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-value">10,384</div>
+      <div class="meta-label">Articles Ingested</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-value">337K</div>
+      <div class="meta-label">Enriched CVEs</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-value">26</div>
+      <div class="meta-label">Feeds Monitored</div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Row 1: Pyramid + Velocity -->
+  <div class="grid">
+    <div class="card">
+      <h2><span class="num">1</span> The Risk Pyramid &mdash; EPSS Distribution</h2>
+      <div class="pyramid">
+        <div class="pyramid-row">
+          <div class="pyramid-label">Critical &ge;50%</div>
+          <div class="pyramid-bar" style="width: 12%; background: linear-gradient(90deg, #dc2626, #ef4444);">7,123</div>
+          <div class="pyramid-count">2.2%</div>
+        </div>
+        <div class="pyramid-row">
+          <div class="pyramid-label">High 10&ndash;50%</div>
+          <div class="pyramid-bar" style="width: 20%; background: linear-gradient(90deg, #ea580c, #f97316);">15,560</div>
+          <div class="pyramid-count">4.8%</div>
+        </div>
+        <div class="pyramid-row">
+          <div class="pyramid-label">Medium 1&ndash;10%</div>
+          <div class="pyramid-bar" style="width: 40%; background: linear-gradient(90deg, #ca8a04, #eab308);">52,408</div>
+          <div class="pyramid-count">16.1%</div>
+        </div>
+        <div class="pyramid-row">
+          <div class="pyramid-label">Low 0.1&ndash;1%</div>
+          <div class="pyramid-bar" style="width: 75%; background: linear-gradient(90deg, #16a34a, #22c55e);">160,993</div>
+          <div class="pyramid-count">49.3%</div>
+        </div>
+        <div class="pyramid-row">
+          <div class="pyramid-label">Negligible &lt;0.1%</div>
+          <div class="pyramid-bar" style="width: 55%; background: linear-gradient(90deg, #2563eb, #3b82f6);">90,424</div>
+          <div class="pyramid-count">27.7%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">2</span> Threat Velocity &mdash; 5-Day Movement</h2>
+      <div class="velocity-grid">
+        <div class="velocity-stat surge">
+          <div class="value">677</div>
+          <div class="label">CVEs Surging</div>
+        </div>
+        <div class="velocity-stat cross50">
+          <div class="value">18</div>
+          <div class="label">Crossed 50%</div>
+        </div>
+        <div class="velocity-stat cross10">
+          <div class="value">64</div>
+          <div class="label">Crossed 10%</div>
+        </div>
+        <div class="velocity-stat falling">
+          <div class="value">63</div>
+          <div class="label">Falling Fast</div>
+        </div>
+      </div>
+      <div style="margin-top: 1.5rem;">
+        <div class="chart-container short">
+          <canvas id="velocityChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Sleeper CVEs (full width) -->
+  <div class="grid">
+    <div class="card grid-full">
+      <h2><span class="num">3</span> Sleeper CVEs &mdash; Noise Floor to Critical in 38 Days</h2>
+      <table class="sleeper-table">
+        <thead>
+          <tr>
+            <th>CVE</th>
+            <th>Description</th>
+            <th>Mar 4</th>
+            <th>Apr 11</th>
+            <th style="min-width:200px">Trajectory</th>
+            <th>Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="sleeper-cve">CVE-2025-71243</td>
+            <td class="desc-text">SPIP plugin RCE</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">0.11%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">83.7%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:0.13%"></div>
+                <div class="sleeper-bar-after" style="width:83.7%"></div>
+              </div>
+            </td>
+            <td class="delta">+75,284%</td>
+          </tr>
+          <tr>
+            <td class="sleeper-cve">CVE-2024-49357</td>
+            <td class="desc-text">Path traversal in file server</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">2.31%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">75.8%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:2.31%"></div>
+                <div class="sleeper-bar-after" style="width:75.8%"></div>
+              </div>
+            </td>
+            <td class="delta">+3,184%</td>
+          </tr>
+          <tr>
+            <td class="sleeper-cve">CVE-2023-6825</td>
+            <td class="desc-text">File inclusion vulnerability</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">3.75%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">71.0%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:3.75%"></div>
+                <div class="sleeper-bar-after" style="width:71%"></div>
+              </div>
+            </td>
+            <td class="delta">+1,795%</td>
+          </tr>
+          <tr>
+            <td class="sleeper-cve">CVE-2022-1692</td>
+            <td class="desc-text">Authenticated RCE</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">3.25%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">67.8%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:3.25%"></div>
+                <div class="sleeper-bar-after" style="width:67.8%"></div>
+              </div>
+            </td>
+            <td class="delta">+1,989%</td>
+          </tr>
+          <tr>
+            <td class="sleeper-cve">CVE-2025-50286</td>
+            <td class="desc-text">Grav CMS plugin upload RCE</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">0.90%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">58.4%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:0.9%"></div>
+                <div class="sleeper-bar-after" style="width:58.4%"></div>
+              </div>
+            </td>
+            <td class="delta">+6,425%</td>
+          </tr>
+          <tr>
+            <td class="sleeper-cve">CVE-2024-28752</td>
+            <td class="desc-text">Apache CXF SSRF</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">0.59%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">55.2%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:0.59%"></div>
+                <div class="sleeper-bar-after" style="width:55.2%"></div>
+              </div>
+            </td>
+            <td class="delta">+9,248%</td>
+          </tr>
+          <tr>
+            <td class="sleeper-cve">CVE-2023-34092</td>
+            <td class="desc-text">Vite dev server path traversal</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">0.46%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">55.1%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:0.46%"></div>
+                <div class="sleeper-bar-after" style="width:55.1%"></div>
+              </div>
+            </td>
+            <td class="delta">+11,854%</td>
+          </tr>
+          <tr>
+            <td class="sleeper-cve">CVE-2025-69516</td>
+            <td class="desc-text">Tactical RMM Jinja2 SSTI</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:0.8rem">0.11%</td>
+            <td style="font-family:'JetBrains Mono',monospace;color:var(--critical);font-weight:700;font-size:0.8rem">53.2%</td>
+            <td>
+              <div class="sleeper-bar-track">
+                <div class="sleeper-bar-before" style="width:0.11%"></div>
+                <div class="sleeper-bar-after" style="width:53.2%"></div>
+              </div>
+            </td>
+            <td class="delta">+49,580%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Row 3: CWE Bubble + Feed Intake -->
+  <div class="grid">
+    <div class="card">
+      <h2><span class="num">4</span> Most Exploitable Weakness Classes</h2>
+      <div class="chart-container tall">
+        <canvas id="cweChart"></canvas>
+      </div>
+      <div class="cwe-note">Bubble size = CVE count &bull; X = Avg CVSS &bull; Y = Avg EPSS</div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">5</span> Feed Intake &mdash; Articles per Week</h2>
+      <div class="chart-container tall">
+        <canvas id="feedChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: CVE Universe Growth + Top Feeds -->
+  <div class="grid">
+    <div class="card">
+      <h2><span class="num">6</span> CVE Universe Growth</h2>
+      <div class="chart-container medium">
+        <canvas id="growthChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="num">7</span> Top Feeds by Volume</h2>
+      <div class="chart-container medium">
+        <canvas id="feedBarChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Takeaway -->
+  <div class="takeaway">
+    <div class="quote">CVSS lies. EPSS doesn't.</div>
+    <div class="subtext">
+      Static severity scores miss what attackers actually target. SSRF averages 66% exploitation probability at CVSS 7.9 &mdash;
+      while many CVSS 9.8 vulnerabilities sit below 1% EPSS. The sleeper pattern is the signal.
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Generated from 39 days of TigerFetch ingestion data &bull; Snapshot: 2026-04-12<br>
+  <div class="sig">tigerfetch &mdash; hunt_the_signal()</div>
+</div>
+
+<script>
+  const fontFamily = "'Inter', sans-serif";
+  const monoFamily = "'JetBrains Mono', monospace";
+  const gridColor = 'rgba(30, 45, 61, 0.6)';
+  const textColor = '#8892a4';
+
+  Chart.defaults.font.family = fontFamily;
+  Chart.defaults.color = textColor;
+
+  // ------- Velocity Ratio Chart -------
+  new Chart(document.getElementById('velocityChart'), {
+    type: 'bar',
+    data: {
+      labels: ['Surging', 'Crossed 50%', 'Crossed 10%', 'Falling'],
+      datasets: [{
+        data: [677, 18, 64, -63],
+        backgroundColor: [
+          'rgba(239, 68, 68, 0.8)',
+          'rgba(249, 115, 22, 0.8)',
+          'rgba(234, 179, 8, 0.8)',
+          'rgba(34, 197, 94, 0.8)'
+        ],
+        borderColor: [
+          '#ef4444', '#f97316', '#eab308', '#22c55e'
+        ],
+        borderWidth: 1,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => Math.abs(ctx.raw) + ' CVEs'
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: gridColor },
+          ticks: {
+            callback: v => Math.abs(v),
+            font: { family: monoFamily, size: 11 }
+          }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { font: { size: 11 } }
+        }
+      }
+    }
+  });
+
+  // ------- CWE Bubble Chart -------
+  const cweData = [
+    { label: 'CWE-918\nSSRF',        x: 7.9, y: 66.2, r: 11, color: '#ef4444' },
+    { label: 'CWE-287\nAuth Bypass',  x: 8.8, y: 64.7, r: 11, color: '#f97316' },
+    { label: 'CWE-22\nPath Traversal',x: 8.0, y: 57.2, r: 22, color: '#eab308' },
+    { label: 'CWE-798\nHardcoded Creds',x:9.2,y: 55.2, r: 7,  color: '#a855f7' },
+    { label: 'CWE-94\nCode Injection',x: 8.9, y: 53.3, r: 15, color: '#06b6d4' },
+    { label: 'CWE-89\nSQL Injection', x: 9.0, y: 51.8, r: 24, color: '#3b82f6' },
+    { label: 'CWE-502\nDeserialization',x:9.0, y: 51.0, r: 16, color: '#22c55e' },
+  ];
+
+  new Chart(document.getElementById('cweChart'), {
+    type: 'bubble',
+    data: {
+      datasets: cweData.map(d => ({
+        label: d.label,
+        data: [{ x: d.x, y: d.y, r: d.r }],
+        backgroundColor: d.color + '55',
+        borderColor: d.color,
+        borderWidth: 2,
+      }))
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const ds = ctx.dataset;
+              return [ds.label.replace('\n', ' — '), `CVSS: ${ctx.raw.x}  EPSS: ${ctx.raw.y}%`];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Avg CVSS Score', font: { size: 11 } },
+          min: 7.0, max: 10.0,
+          grid: { color: gridColor },
+          ticks: { font: { family: monoFamily, size: 10 } }
+        },
+        y: {
+          title: { display: true, text: 'Avg EPSS %', font: { size: 11 } },
+          min: 45, max: 72,
+          grid: { color: gridColor },
+          ticks: {
+            callback: v => v + '%',
+            font: { family: monoFamily, size: 10 }
+          }
+        }
+      }
+    }
+  });
+
+  // ------- Feed Intake Area Chart -------
+  const feedWeeks = [
+    'Sep 1','Sep 8','Sep 15','Sep 22','Sep 29',
+    'Oct 6','Oct 13','Oct 20','Oct 27',
+    'Nov 3','Nov 10','Nov 17','Nov 24',
+    'Dec 1','Dec 8','Dec 15','Dec 22','Dec 29',
+    'Jan 5','Jan 12','Jan 19','Jan 26',
+    'Feb 2','Feb 9','Feb 16','Feb 23',
+    'Mar 2','Mar 9','Mar 16','Mar 23','Mar 30',
+    'Apr 6'
+  ];
+  const feedCounts = [16,48,43,38,38,30,41,51,35,76,126,110,95,236,251,350,137,128,337,335,202,203,221,274,2088,268,647,640,602,732,525,552];
+
+  new Chart(document.getElementById('feedChart'), {
+    type: 'line',
+    data: {
+      labels: feedWeeks,
+      datasets: [{
+        data: feedCounts,
+        fill: true,
+        backgroundColor: 'rgba(249, 115, 22, 0.12)',
+        borderColor: '#f97316',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: '#f97316',
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => 'Week of ' + ctx[0].label,
+            label: ctx => ctx.raw.toLocaleString() + ' articles'
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            maxRotation: 45,
+            font: { size: 9 },
+            maxTicksLimit: 12
+          }
+        },
+        y: {
+          grid: { color: gridColor },
+          ticks: {
+            font: { family: monoFamily, size: 10 }
+          }
+        }
+      }
+    }
+  });
+
+  // ------- CVE Universe Growth -------
+  const growthDates = [
+    'Mar 4','Mar 7','Mar 10','Mar 13','Mar 16','Mar 19','Mar 22','Mar 25','Mar 28','Mar 31',
+    'Apr 1','Apr 6','Apr 7','Apr 8','Apr 10','Apr 11'
+  ];
+  const growthCounts = [
+    318265,319355,319479,320502,320789,321246,321918,322640,323611,323901,
+    324390,325019,325252,325743,326334,326508
+  ];
+
+  new Chart(document.getElementById('growthChart'), {
+    type: 'line',
+    data: {
+      labels: growthDates,
+      datasets: [{
+        data: growthCounts,
+        fill: true,
+        backgroundColor: 'rgba(6, 182, 212, 0.1)',
+        borderColor: '#06b6d4',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointBackgroundColor: '#06b6d4',
+        tension: 0.2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.raw.toLocaleString() + ' CVEs tracked'
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 9 }, maxTicksLimit: 8 }
+        },
+        y: {
+          min: 316000,
+          grid: { color: gridColor },
+          ticks: {
+            callback: v => (v/1000).toFixed(0) + 'k',
+            font: { family: monoFamily, size: 10 }
+          }
+        }
+      }
+    }
+  });
+
+  // ------- Top Feeds Bar -------
+  new Chart(document.getElementById('feedBarChart'), {
+    type: 'bar',
+    data: {
+      labels: ['MSRC','CERT-Bund','Bleeping','Hacker News','Dark Reading','JPCERT','CISA','Ubuntu','NCSC UK','SANS ISC'],
+      datasets: [{
+        data: [3482, 1348, 879, 750, 541, 427, 413, 402, 347, 277],
+        backgroundColor: [
+          '#f97316','#fb923c','#fbbf24','#eab308','#a3e635',
+          '#22c55e','#06b6d4','#3b82f6','#8b5cf6','#a855f7'
+        ],
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.raw.toLocaleString() + ' articles'
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: gridColor },
+          ticks: { font: { family: monoFamily, size: 10 } }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { font: { size: 10 } }
+        }
+      }
+    }
+  });
+</script>
+
+</body>
+</html>
