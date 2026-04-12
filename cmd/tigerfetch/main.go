@@ -110,19 +110,22 @@ func main() {
 		go func() {
 			defer workers.Done()
 			runner := cve.NewNvdRunner(pool, cfg.NVD)
+			interval, err := cfg.NVD.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid NVD poll interval, using default 1h", "error", err)
+				interval = 1 * time.Hour
+			}
+			ticker := time.NewTimer(0) // fire immediately on first run
+			defer ticker.Stop()
 			for {
-				if err := runner.Run(ctx); err != nil {
-					slog.Error("NVD runner error", "error", err)
-				}
-				interval, err := cfg.NVD.GetPollDuration()
-				if err != nil || interval <= 0 {
-					slog.Warn("Invalid NVD poll interval, using default 1h", "error", err)
-					interval = 1 * time.Hour
-				}
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(interval):
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("NVD runner error", "error", err)
+					}
+					ticker.Reset(interval)
 				}
 			}
 		}()
@@ -133,19 +136,22 @@ func main() {
 		go func() {
 			defer workers.Done()
 			runner := cve.NewKevRunner(pool, cfg.KEV)
+			interval, err := cfg.KEV.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid KEV poll interval, using default 1h", "error", err)
+				interval = 1 * time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
 			for {
-				if err := runner.Run(ctx); err != nil {
-					slog.Error("KEV runner error", "error", err)
-				}
-				interval, err := cfg.KEV.GetPollDuration()
-				if err != nil || interval <= 0 {
-					slog.Warn("Invalid KEV poll interval, using default 1h", "error", err)
-					interval = 1 * time.Hour
-				}
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(interval):
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("KEV runner error", "error", err)
+					}
+					ticker.Reset(interval)
 				}
 			}
 		}()
@@ -156,19 +162,22 @@ func main() {
 		go func() {
 			defer workers.Done()
 			runner := cve.NewEpssRunner(pool, cfg.EPSS)
+			interval, err := cfg.EPSS.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid EPSS poll interval, using default 24h", "error", err)
+				interval = 24 * time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
 			for {
-				if err := runner.Run(ctx); err != nil {
-					slog.Error("EPSS runner error", "error", err)
-				}
-				interval, err := cfg.EPSS.GetPollDuration()
-				if err != nil || interval <= 0 {
-					slog.Warn("Invalid EPSS poll interval, using default 24h", "error", err)
-					interval = 24 * time.Hour
-				}
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(interval):
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("EPSS runner error", "error", err)
+					}
+					ticker.Reset(interval)
 				}
 			}
 		}()
@@ -187,24 +196,27 @@ func main() {
 			}
 			const maxConcurrent = 5
 			sem := make(chan struct{}, maxConcurrent)
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
 			for {
-				var wg sync.WaitGroup
-				for _, feedCfg := range cfg.Feeds {
-					wg.Add(1)
-					sem <- struct{}{} // acquire slot
-					go func(fc config.Feed) {
-						defer wg.Done()
-						defer func() { <-sem }() // release slot
-						if err := client.FetchAndSave(ctx, fc); err != nil {
-							slog.Error("Feed ingestion error", "feed", fc.Name, "error", err)
-						}
-					}(feedCfg)
-				}
-				wg.Wait()
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(interval):
+				case <-ticker.C:
+					var wg sync.WaitGroup
+					for _, feedCfg := range cfg.Feeds {
+						wg.Add(1)
+						sem <- struct{}{} // acquire slot
+						go func(fc config.Feed) {
+							defer wg.Done()
+							defer func() { <-sem }() // release slot
+							if err := client.FetchAndSave(ctx, fc); err != nil {
+								slog.Error("Feed ingestion error", "feed", fc.Name, "error", err)
+							}
+						}(feedCfg)
+					}
+					wg.Wait()
+					ticker.Reset(interval)
 				}
 			}
 		}()

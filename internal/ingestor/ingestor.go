@@ -42,13 +42,13 @@ func (c *Client) FetchAndSave(ctx context.Context, feedCfg config.Feed) (retErr 
 		}
 	}()
 
-	fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	opCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	slog.Debug("Fetching feed", "url", feedCfg.URL)
 
 	httpStart := time.Now()
-	feed, err := c.pf.ParseURLWithContext(feedCfg.URL, fetchCtx)
+	feed, err := c.pf.ParseURLWithContext(feedCfg.URL, opCtx)
 	metrics.UpstreamRequestDuration.WithLabelValues("feed").Observe(time.Since(httpStart).Seconds())
 	if err != nil {
 		return fmt.Errorf("failed to parse feed %s: %w", feedCfg.URL, err)
@@ -59,7 +59,7 @@ func (c *Client) FetchAndSave(ctx context.Context, feedCfg config.Feed) (retErr 
 	processed := 0
 	failed := 0
 	for _, item := range feed.Items {
-		if err := c.processItem(ctx, feedCfg, feed, item); err != nil {
+		if err := c.processItem(opCtx, feedCfg, feed, item); err != nil {
 			slog.Error("Failed to process item", "guid", item.GUID, "error", err)
 			failed++
 			continue

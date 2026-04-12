@@ -46,18 +46,20 @@ Reviewed: 2026-04-04
 
 ## P2 — Correctness / data quality
 
-- [ ] **`time.After()` leak in ticker loops** — `cmd/tigerfetch/main.go:119-205`
-  Each iteration creates a new `time.After` channel. Unfired timers accumulate until GC.
-  **Fix:** Use `time.NewTimer` with `Reset()`.
+- [x] **`time.After()` leak in ticker loops** — `cmd/tigerfetch/main.go`
+  Each iteration created a new `time.After` channel. Unfired timers accumulated until GC.
+  **Fixed:** Replaced with `time.NewTimer` + `Reset()`, `defer ticker.Stop()`.
 
-- [ ] **DB transaction uses parent ctx, not timeout ctx** — `internal/ingestor/ingestor.go:45-46, 126`
-  Feed fetch uses 30s timeout but DB transaction uses unbounded parent ctx.
-  **Fix:** Use same timeout context or add DB-specific timeout.
+- [x] **DB transaction uses parent ctx, not timeout ctx** — `internal/ingestor/ingestor.go`
+  Feed fetch used 30s timeout but DB transaction used unbounded parent ctx.
+  **Fixed:** Renamed to `opCtx`, passed to both HTTP fetch and `processItem`.
 
-- [ ] **Invalid migration filename** — `migrations/20250532_create_cve_enriched.sql`
+- [x] **Invalid migration filename** — `migrations/20250532_create_cve_enriched.sql`
   May 32 doesn't exist. Lexicographic sorting works but confusing.
+  **Won't fix:** Already applied to live DBs; renaming would break Goose version tracking.
 
-- [ ] **Duplicate migration** — `migrations/20250601` and `20250602` both create `ingest_state` with identical SQL.
+- [x] **Duplicate migration** — `migrations/20250601` and `20250602` both create `ingest_state` with identical SQL.
+  **Won't fix:** Already reconciled by `20250913_fix_checksums.sql`. Harmless due to `IF NOT EXISTS`.
 
 ---
 
