@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"tiger2go/internal/alerting"
 	"tiger2go/internal/config"
 	"tiger2go/internal/cve"
 	"tiger2go/internal/db"
@@ -216,6 +217,34 @@ func main() {
 						}(feedCfg)
 					}
 					wg.Wait()
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	// Run sleeper CVE alerting if enabled
+	if cfg.Alerting.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := alerting.NewRunner(pool, cfg.Alerting)
+			interval, err := cfg.Alerting.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid alerting poll interval, using default 1h", "error", err)
+				interval = 1 * time.Hour
+			}
+			// Delay first run by 30s to let EPSS ingest finish if both start together
+			ticker := time.NewTimer(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("Alerting runner error", "error", err)
+					}
 					ticker.Reset(interval)
 				}
 			}

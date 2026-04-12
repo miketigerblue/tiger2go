@@ -155,6 +155,31 @@ var KevCursorLag = promauto.NewGauge(prometheus.GaugeOpts{
 })
 
 // ---------------------------------------------------------------------------
+// Alerting
+// ---------------------------------------------------------------------------
+
+var AlertingRuns = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_alerting_runs_total",
+	Help: "Alerting cycle outcomes (success, error, none, skipped).",
+}, []string{"status"})
+
+var AlertingSleeperCVEs = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_alerting_sleeper_cves_detected_total",
+	Help: "CVEs detected crossing EPSS thresholds.",
+})
+
+var AlertingWebhooksSent = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_alerting_webhooks_sent_total",
+	Help: "Webhook delivery attempts by name and outcome.",
+}, []string{"webhook_name", "status"})
+
+var AlertingRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_alerting_run_duration_seconds",
+	Help:    "Duration of sleeper CVE detection cycle.",
+	Buckets: []float64{0.5, 1, 5, 15, 30, 60},
+})
+
+// ---------------------------------------------------------------------------
 // Upstream HTTP latency (all sources)
 // ---------------------------------------------------------------------------
 
