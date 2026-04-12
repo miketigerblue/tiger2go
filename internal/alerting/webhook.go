@@ -70,7 +70,7 @@ func formatCvssBadge(score *float64, severity string) string {
 	if score == nil {
 		return "CVSS: _n/a_"
 	}
-	emoji := ":white_circle:"
+	var emoji string
 	switch {
 	case *score >= 9.0:
 		emoji = ":red_circle:"
