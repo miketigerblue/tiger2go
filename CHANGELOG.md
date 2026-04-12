@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-04-12
+
+### Added
+- **Sleeper CVE Alerting** — detects CVEs that jump from <10% to ≥50% EPSS over a configurable lookback window and sends notifications via webhooks
+- **Slack Block Kit notifications** — rich formatted alerts with NVD links, coloured CVSS badges, CWE tags, and truncated descriptions (capped at 10 CVEs per message)
+- **Generic webhook support** — flat JSON payload for non-Slack integrations
+- **Cursor-based alert deduplication** — prevents duplicate notifications using `ingest_state` tracking
+- **4 Prometheus alerting metrics** — `alerting_runs_total`, `sleeper_cves_detected_total`, `webhooks_sent_total`, `alerting_run_duration_seconds`
+- **EPSS Score Distribution panel** — bargauge with semantic risk colours (green → red) on the Threat Intelligence dashboard
+- **EPSS Coverage & Ingest Health panels** — stat, gauge, and daily log replacing the broken trend timeseries
+- **Prometheus persistent volume** — scrape data survives container rebuilds (90-day retention, 1GB cap)
+
+### Changed
+- `Config.toml.example` updated with `[alerting]` section and webhook examples
+- Removed dead `[mitre]` config section (no Go code references it)
+
+### Fixed
+- Grafana 11.6 dashboard panels showing "No data" — added explicit datasource references to all 33 panels in tigerfetch-overview
+- EPSS panels on Threat Intelligence dashboard never rendered — replaced `barchart`/`timeseries` with working panel types
+- EPSS distribution colours were inverted (high EPSS was green instead of red)
+
+### Removed
+- `raw` JSONB column from `epss_daily` — redundant (duplicated cve_id, as_of, epss, percentile); reclaimed ~23% table size per partition
+
+---
+
 ## [1.1.1] - 2026-03-29
 
 ### Added
