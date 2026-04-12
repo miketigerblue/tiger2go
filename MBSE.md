@@ -142,12 +142,12 @@ The codebase follows the **Standard Go Project Layout** with clean separation of
 
 | Layer | Technology | Notes |
 |:---|:---|:---|
-| **Runtime** | Go 1.24, multi-stage Docker (builder: `golang:1.24-bookworm` → runtime: `debian:bookworm-slim`) | Non-root container user, minimal image |
-| **Database** | PostgreSQL 14+ | Table partitioning (EPSS by month), JSONB storage, UUID PKs, array columns |
+| **Runtime** | Go 1.26, multi-stage Docker (builder: `golang:1.26-bookworm` → runtime: `debian:bookworm-slim`) | Non-root container user, minimal image |
+| **Database** | PostgreSQL 16+ | Table partitioning (EPSS by month), JSONB storage, UUID PKs, array columns |
 | **API Gateway** | PostgREST | Auto-generated REST from schema; row-level limits (1000 max), anonymous role |
-| **Observability** | Prometheus (15s scrape interval), 30+ custom `tigerfetch_*` metrics | Grafana available but not enabled by default in compose |
+| **Observability** | Prometheus (15s scrape interval), 30+ custom `tigerfetch_*` metrics | Grafana provisioned with two dashboards (operations + threat intelligence) |
 | **Cloud** | Fly.io (`ams` region, 512 MB / 1 shared CPU, always-on) | Configured via `fly.toml` |
-| **Orchestration** | Docker Compose (3 active services) | `db` (Postgres), `tigerfetch`, `prometheus`. Optional: `grafana`, `postgrest`, `pgadmin` (commented out) |
+| **Orchestration** | Docker Compose (4 active services) | `db` (Postgres), `tigerfetch`, `prometheus`, `grafana`. Optional: `postgrest`, `pgadmin` (commented out) |
 
 ---
 
@@ -266,4 +266,4 @@ An additional ~15 feeds are documented but disabled with inline rationale (404s,
 
 ---
 
-*Generated: 8 February 2026 · Updated: 29 March 2026*
+*Generated: 8 February 2026 · Updated: 4 April 2026*

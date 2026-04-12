@@ -5,7 +5,7 @@ This document tracks the conversion of the `tigerfetch` Rust application to a Go
 ## 1. Project Overview
 **Goal:** Rewrite the `tigerfetch` OSINT ingestor in Go.
 **Target Stack:**
-- **Language:** Go 1.24+
+- **Language:** Go 1.26+
 - **Database:** PostgreSQL (pgx driver)
 - **Migrations:** Goose
 - **Config:** Viper
