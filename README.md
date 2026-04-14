@@ -16,7 +16,7 @@ Most ports you see out in the wild go **Go → Rust** (performance, memory safet
 
 This project goes the other way on purpose.
 
-`tiger2go` repo is a Go port of **tigerfetch**, originally written in Rust. The goal here is not “Go is better than Rust”. It’s that **the dominant problem in this system is not memory ownership** — it’s *operational ingestion*:
+`tiger2go` repo is a Go port of **tigerfetch**, originally written in Rust. The goal here is not “Go is better than Rust”. It’s that **the dominant problem in this system is not memory ownership** - it’s *operational ingestion*:
 
 - high-volume I/O (RSS/Atom, NVD JSON, KEV, daily EPSS)
 - untrusted inputs (feeds are user input in a trenchcoat)
