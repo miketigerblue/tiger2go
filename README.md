@@ -29,7 +29,7 @@ Go is simply a great fit for that shape:
 goroutines and a mature runtime make it easy to coordinate concurrent workers,
 and the resulting code tends to be globally readable and straightforward to operate.
 
-Rust is still excellent — especially when memory ownership and correctness under adversarial conditions *is* the main fight. In this system, that fight is mostly elsewhere: scheduling, ingestion hygiene, and observability.
+Rust is still excellent - especially when memory ownership and correctness under adversarial conditions *is* the main fight. In this system, that fight is mostly elsewhere: scheduling, ingestion hygiene, and observability.
 
 So the port direction is less “downgrade” and more **optimising for shipping and operating**. 
 
@@ -65,8 +65,8 @@ Data sources → ingestion → normalisation → storage → downstream analysis
 *   **Migrations**: Embedded schema migrations using `pressly/goose`.
 *   **Observability**: Prometheus metrics (`/metrics`), health checks (`/healthz`), and two provisioned Grafana dashboards (operational + threat intelligence).
 *   **Grafana Dashboards**:
-    *   **TigerFetch Operations** — ~30 Prometheus-powered panels: feed health, NVD/EPSS/KEV pipeline status, upstream latency, DB pool, Go runtime.
-    *   **Threat Intelligence** — ~20 SQL-powered panels: EPSS top 25, CVSS x EPSS danger zone, NVD severity landscape, CISA KEV catalog, feed content coverage.
+    *   **TigerFetch Operations** ~30 Prometheus-powered panels: feed health, NVD/EPSS/KEV pipeline status, upstream latency, DB pool, Go runtime.
+    *   **Threat Intelligence** ~20 SQL-powered panels: EPSS top 25, CVSS x EPSS danger zone, NVD severity landscape, CISA KEV catalog, feed content coverage.
 
 ## 🛠️ Build & Run
 
