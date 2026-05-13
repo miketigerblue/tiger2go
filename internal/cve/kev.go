@@ -23,17 +23,26 @@ type KevCatalog struct {
 }
 
 type KevVuln struct {
-	CveID             string `json:"cveID"`
-	VendorProject     string `json:"vendorProject"`
-	Product           string `json:"product"`
-	VulnerabilityName string `json:"vulnerabilityName"`
-	DateAdded         string `json:"dateAdded"`
-	ShortDescription  string `json:"shortDescription"`
-	RequiredAction    string `json:"requiredAction"`
-	DueDate           string `json:"dueDate"`
-	Notes             string `json:"notes"`
-	// We capture the raw JSON for storage by re-marshaling the struct or using a map wrapper.
-	// Since the fields are flat, re-marshaling is easy.
+	CveID                      string   `json:"cveID"`
+	VendorProject              string   `json:"vendorProject"`
+	Product                    string   `json:"product"`
+	VulnerabilityName          string   `json:"vulnerabilityName"`
+	DateAdded                  string   `json:"dateAdded"`
+	ShortDescription           string   `json:"shortDescription"`
+	RequiredAction             string   `json:"requiredAction"`
+	DueDate                    string   `json:"dueDate"`
+	// CISA uses "Known" / "Unknown" for this field. Stored as-is so the
+	// downstream cve_kev backfill can compute the boolean (and any
+	// future field-value drift remains visible in the raw JSON).
+	KnownRansomwareCampaignUse string   `json:"knownRansomwareCampaignUse"`
+	Notes                      string   `json:"notes"`
+	// CWE identifiers tagged to the entry by CISA. Array of strings like ["CWE-77"].
+	CWEs                       []string `json:"cwes"`
+	// We capture the raw JSON for storage by re-marshaling the struct.
+	// Adding a new upstream field means adding it here too, otherwise
+	// it gets silently dropped on round-trip — that's how this very
+	// file ended up missing knownRansomwareCampaignUse and cwes for
+	// several months.
 }
 
 type KevRunner struct {
