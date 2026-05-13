@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-05-13
+
+### Added
+
+#### CISA KEV as a first-class table (`20260511_create_cve_kev.sql`)
+- New `cve_kev` table promoting CISA Known Exploited Vulnerabilities to its own entity, replacing the `cve_enriched(source='CISA-KEV')` anti-pattern (KEV is an *attribute* of a CVE, not a competing authoritative source)
+- Mirrors the upstream CISA catalogue schema: `vendor_project`, `product`, `vulnerability_name`, `short_description`, `required_action`, `date_added`, `due_date`, `known_ransomware_use`, `cwes[]`, plus raw jsonb fallback
+- Withdrawn entries flagged via `withdrawn_at` rather than deleted (historical record preserved)
+- Partial indexes: `idx_cve_kev_active`, `idx_cve_kev_due_date`, `idx_cve_kev_ransomware`, `idx_cve_kev_vendor_product`
+- Backfill script `scripts/backfill_cve_kev.sql` — idempotent, populated 1,590 entries on first run
+
+#### Append-only CVE change log (`20260512_create_cve_enriched_history.sql`)
+- New `cve_enriched_history` table — one row per actual state-change on `cve_enriched`
+- PL/pgSQL trigger `trg_cve_enriched_history` on INSERT / UPDATE / DELETE fires `cve_enriched_capture_history()`. Skips no-op UPDATEs
+- Captures `prev_json` + scalar `prev_cvss_base` / `prev_epss` / `prev_modified`, plus `changed_fields TEXT[]` with synthetic keys (`__cvss_base__`, `__epss__`, `__modified__`) when surfaced scalar columns change
+- Lets us answer "why did this CVE's score change?" / "when did NVD add this CPE configuration?" without scraping NVD's changelog
+
+#### `pg_notify` trigger on archive (`20260513_archive_notify_trigger.sql`)
+- `AFTER INSERT ON archive` fires `pg_notify('article_ingested', NEW.guid)`
+- Enables tiger-eye's sub-second LISTEN-driven enrichment (drops wake-up latency from up-to-60s polling lag to <1s)
+- AFTER trigger — rolled-back transactions don't generate notifies (pg_notify queues are flushed on commit only)
+- No UPDATE/DELETE handling — re-enrichment policy on edits is handled by tiger-eye's `input_hash` compare on poll
+
+### Companion changes in `tiger-eye`
+- Read-only SQLAlchemy models for `cve_kev` and `cve_enriched_history`
+- Tiger-eye writer now emits per-row provenance (`model_id`, `prompt_version`, `pipeline_version`, `prompt_tokens`, `response_tokens`, `latency_ms`, `input_hash`)
+- Strict OpenAI `json_schema` response_format (PROMPT_VERSION=v3)
+- LISTEN/NOTIFY listener subscribes to `article_ingested`
+- See `tiger-eye/CHANGELOG.md` v0.2.0 for the full set
+
+### Known issue
+- The tigerfetch CISA-KEV ingestor does not currently persist the upstream `knownRansomwareCampaignUse` or `cwes[]` fields into `cve_enriched.json`. After backfill, all 1,590 `cve_kev` rows have `known_ransomware_use=false` even where the upstream feed marks otherwise. Fix is a one-line addition to the JSON projection in the KEV ingest path.
+
+---
+
 ## [1.2.0] - 2026-04-12
 
 ### Added
