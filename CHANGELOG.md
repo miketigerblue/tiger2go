@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.1] - 2026-05-13
+
+### Fixed
+- **CISA KEV ingest dropped `knownRansomwareCampaignUse` and `cwes[]` fields.** The Go `KevVuln` struct in `internal/cve/kev.go` was missing both, so the round-trip `json.Marshal(KevVuln)` silently dropped them when writing to `cve_enriched.json`. Result: 1,590 KEV entries in production had `known_ransomware_use=false` regardless of upstream value, and their CWE classifications were unrecoverable from local data. Added both fields to the struct (`KnownRansomwareCampaignUse string` and `CWEs []string`) and extended the integration test to assert round-trip persistence via a `SELECT json ->> 'knownRansomwareCampaignUse'` check.
+- After redeploying tigerfetch, the next KEV catalog refresh will repopulate both fields. To backfill historical entries earlier than that, re-run `scripts/backfill_cve_kev.sql` once the corrected JSON has landed in `cve_enriched`.
+
+### Known issue (now resolved)
+- The "Known issue" noted in v1.3.0 above (KEV ingest gap) is fixed by this release.
+
+---
+
 ## [1.3.0] - 2026-05-13
 
 ### Added

@@ -30,7 +30,8 @@ func TestKevRunner_Integration(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	// 1. Mock Server
+	// 1. Mock Server — includes knownRansomwareCampaignUse and cwes so
+	// we can verify the round-trip through KevVuln preserves them.
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
@@ -47,7 +48,9 @@ func TestKevRunner_Integration(t *testing.T) {
 					"shortDescription": "Desc",
 					"requiredAction": "Patch",
 					"dueDate": "2099-02-01",
-					"notes": ""
+					"knownRansomwareCampaignUse": "Known",
+					"notes": "",
+					"cwes": ["CWE-77", "CWE-78"]
 				}
 			]
 		}`))
@@ -68,11 +71,26 @@ func TestKevRunner_Integration(t *testing.T) {
 	err = runner.Run(ctx)
 	require.NoError(t, err)
 
-	// 4. Verify DB
+	// 4. Verify DB — including the previously-dropped fields.
 	var count int
 	err = pool.QueryRow(ctx, "SELECT count(*) FROM cve_enriched WHERE cve_id = 'CVE-TEST-KEV-001' AND source = 'CISA-KEV'").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
+
+	// Round-trip check: knownRansomwareCampaignUse and cwes must be
+	// preserved in the stored json. Before the v1.3.1 fix these were
+	// silently dropped because the Go struct lacked the fields.
+	var kr string
+	var cwes []string
+	err = pool.QueryRow(ctx,
+		`SELECT json ->> 'knownRansomwareCampaignUse',
+		         ARRAY(SELECT jsonb_array_elements_text(json -> 'cwes'))
+		   FROM cve_enriched
+		  WHERE cve_id = 'CVE-TEST-KEV-001' AND source = 'CISA-KEV'`,
+	).Scan(&kr, &cwes)
+	require.NoError(t, err)
+	assert.Equal(t, "Known", kr)
+	assert.ElementsMatch(t, []string{"CWE-77", "CWE-78"}, cwes)
 
 	// 5. Verify State
 	var cursor string
