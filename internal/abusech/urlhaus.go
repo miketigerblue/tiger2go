@@ -238,6 +238,7 @@ func splitTags(s string) []string {
 //   - "2026-05-16 16:58:18"      (URLhaus + MalwareBazaar)
 //   - "2026-05-16 18:46:11 UTC"  (ThreatFox — trailing TZ abbreviation)
 //   - RFC3339 variants           (used elsewhere in the package)
+//
 // Returns nil for empty / unparseable.
 func parseTime(s string) *time.Time {
 	if s == "" {
