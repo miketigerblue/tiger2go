@@ -245,6 +245,26 @@ var UrlhausRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 })
 
 // ---------------------------------------------------------------------------
+// Nuclei templates
+// ---------------------------------------------------------------------------
+
+var NucleiFetches = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_nuclei_fetches_total",
+	Help: "Nuclei templates Run() outcomes (success, error).",
+}, []string{"status"})
+
+var NucleiTemplatesProcessed = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_nuclei_templates_processed_total",
+	Help: "Total Nuclei templates upserted.",
+})
+
+var NucleiRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_nuclei_run_duration_seconds",
+	Help:    "Duration of a full Nuclei Run() cycle.",
+	Buckets: []float64{5, 15, 30, 60, 120, 300, 600},
+})
+
+// ---------------------------------------------------------------------------
 // Alerting
 // ---------------------------------------------------------------------------
 

@@ -22,6 +22,7 @@ type Config struct {
 	GHSA     GhsaConfig     `mapstructure:"ghsa"`
 	Abusech  AbusechConfig  `mapstructure:"abusech"`
 	MSF      MsfConfig      `mapstructure:"msf"`
+	Nuclei   NucleiConfig   `mapstructure:"nuclei"`
 	Alerting AlertingConfig `mapstructure:"alerting"`
 }
 
@@ -101,6 +102,17 @@ type MsfConfig struct {
 	URL          string `mapstructure:"url"`
 }
 
+// NucleiConfig controls the Nuclei templates ingestor. URL defaults to the
+// main-branch tarball at github.com/projectdiscovery/nuclei-templates.
+// Subdirs restricts which directories to walk (default = all common
+// template paths).
+type NucleiConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	PollInterval string   `mapstructure:"poll_interval"`
+	URL          string   `mapstructure:"url"`
+	Subdirs      []string `mapstructure:"subdirs"`
+}
+
 type AlertingConfig struct {
 	Enabled      bool            `mapstructure:"enabled"`
 	PollInterval string          `mapstructure:"poll_interval"`
@@ -178,6 +190,10 @@ func (c *UrlhausConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *MsfConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *NucleiConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
 
