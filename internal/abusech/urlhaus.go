@@ -234,19 +234,23 @@ func splitTags(s string) []string {
 	return out
 }
 
-// parseTime accepts both "2026-05-16 16:58:18" (URLhaus' format) and
-// the RFC3339 variants we use elsewhere. Returns nil for empty / unparseable.
+// parseTime accepts the three timestamp shapes abuse.ch returns:
+//   - "2026-05-16 16:58:18"      (URLhaus + MalwareBazaar)
+//   - "2026-05-16 18:46:11 UTC"  (ThreatFox — trailing TZ abbreviation)
+//   - RFC3339 variants           (used elsewhere in the package)
+// Returns nil for empty / unparseable.
 func parseTime(s string) *time.Time {
 	if s == "" {
 		return nil
 	}
 	for _, layout := range []string{
-		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05 MST", // ThreatFox: "... UTC" suffix
+		"2006-01-02 15:04:05",     // URLhaus, MalwareBazaar
 		time.RFC3339Nano,
 		time.RFC3339,
 	} {
 		if t, err := time.Parse(layout, s); err == nil {
-			// URLhaus timestamps are UTC by convention; tag them so the
+			// abuse.ch timestamps are UTC by convention; tag them so the
 			// timestamptz column round-trips correctly.
 			return ptr(t.UTC())
 		}
