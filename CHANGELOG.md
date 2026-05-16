@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### EPSS materialisation (`20260516_materialize_epss_to_cve_enriched.sql`)
+- New `materialize_epss_to_cve_enriched()` PL/pgSQL function that pulls
+  the latest EPSS score per CVE from the `epss_daily` partitions and
+  writes it to `cve_enriched.epss`. Idempotent (only updates rows whose
+  score actually changed); safe to call on a schedule.
+- Migration runs the function once on apply, producing the immediate
+  data-quality fix.
+- **Pre-migration coverage**: 0 / 351,080 rows (0%) had EPSS populated
+  in `cve_enriched`, despite ~11M scores being available across the
+  partitions. Analyst queries of the form `WHERE epss >= 0.5` returned
+  zero rows — the data was unjoinable.
+- **Post-migration coverage**: 333,455 / 351,080 rows (95.0%). The 5%
+  gap is CVEs with no EPSS score yet (typically very new entries; EPSS
+  publishes with a slight lag after NVD).
+- Future EPSS pulls should call this function post-fetch (cron,
+  pg_cron, or tigerfetch hook — TBD).
+
+---
+
 ## [1.3.1] - 2026-05-13
 
 ### Fixed
