@@ -36,8 +36,9 @@ const (
 )
 
 // ThreatFoxIOC mirrors one record in the ThreatFox `get_iocs` response.
-// All fields are strings in the JSON, including numeric ones like
-// `ioc_id` and `confidence_level` — abuse.ch encodes them that way.
+// Field types verified against a live response on 2026-05-16: `id` is
+// the stringified decimal of the numeric ID column; `confidence_level`
+// is a JSON number; `anonymous` is the string "0" / "1".
 type ThreatFoxIOC struct {
 	IocID            string   `json:"id"`
 	Ioc              string   `json:"ioc"`
@@ -47,7 +48,7 @@ type ThreatFoxIOC struct {
 	MalwareAlias     string   `json:"malware_alias"`
 	MalwarePrintable string   `json:"malware_printable"`
 	MalwareMalpedia  string   `json:"malware_malpedia"`
-	ConfidenceLevel  string   `json:"confidence_level"`
+	ConfidenceLevel  *int     `json:"confidence_level"`
 	FirstSeen        string   `json:"first_seen"`
 	LastSeen         string   `json:"last_seen"`
 	Reporter         string   `json:"reporter"`
@@ -207,8 +208,8 @@ func (r *ThreatFoxRunner) upsertAll(ctx context.Context, iocs []ThreatFoxIOC) (i
 		default:
 		}
 
-		id, ok := parseInt64(ioc.IocID)
-		if !ok || strings.TrimSpace(ioc.Ioc) == "" {
+		id, err := strconv.ParseInt(strings.TrimSpace(ioc.IocID), 10, 64)
+		if err != nil || strings.TrimSpace(ioc.Ioc) == "" {
 			continue
 		}
 
@@ -226,7 +227,7 @@ func (r *ThreatFoxRunner) upsertAll(ctx context.Context, iocs []ThreatFoxIOC) (i
 			nilEmpty(ioc.MalwareAlias),
 			nilEmpty(ioc.MalwarePrintable),
 			nilEmpty(ioc.MalwareMalpedia),
-			nilInt(parseInt(ioc.ConfidenceLevel)),
+			ioc.ConfidenceLevel,
 			parseTime(ioc.FirstSeen),
 			parseTime(ioc.LastSeen),
 			nilEmpty(ioc.Reporter),
@@ -243,32 +244,8 @@ func (r *ThreatFoxRunner) upsertAll(ctx context.Context, iocs []ThreatFoxIOC) (i
 	return processed, nil
 }
 
-// parseInt converts a decimal string to int. Returns 0 on any error.
-// Used for ThreatFox's confidence_level (encoded as string in JSON).
-func parseInt(s string) int {
-	if s == "" {
-		return 0
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-func parseInt64(s string) (int64, bool) {
-	if s == "" {
-		return 0, false
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return n, true
-}
-
-// parseBoolish handles abuse.ch's mix of "0"/"1"/"true"/"false" for the
-// `anonymous` field. Defaults to false on anything unrecognised.
+// parseBoolish handles abuse.ch's "0"/"1"/"true"/"false" string encoding
+// for the `anonymous` field. Defaults to false on anything unrecognised.
 func parseBoolish(s string) bool {
 	switch strings.TrimSpace(strings.ToLower(s)) {
 	case "1", "true", "yes":
@@ -289,13 +266,4 @@ func normaliseTags(in []string) []string {
 		out = append(out, t)
 	}
 	return out
-}
-
-// nilInt returns nil for zero so the SQL upsert leaves the column NULL
-// rather than persisting a meaningless 0 confidence score.
-func nilInt(n int) interface{} {
-	if n == 0 {
-		return nil
-	}
-	return n
 }

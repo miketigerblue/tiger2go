@@ -169,6 +169,14 @@ func Load() (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// AutomaticEnv only resolves env vars during Get() — not during Unmarshal
+	// of nested struct keys that aren't already known via the config file or
+	// a SetDefault. Bind the credential keys explicitly so an empty/missing
+	// TOML stanza doesn't shadow the env var.
+	_ = v.BindEnv("abusech.api_key", "ABUSECH_API_KEY")
+	_ = v.BindEnv("ghsa.token", "GHSA_TOKEN")
+	_ = v.BindEnv("nvd.api_key", "NVD_API_KEY")
+
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("failed to read config file: %w", err)

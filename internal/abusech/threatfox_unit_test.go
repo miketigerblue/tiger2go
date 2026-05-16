@@ -6,38 +6,6 @@ import (
 	"testing"
 )
 
-func TestParseInt64(t *testing.T) {
-	cases := []struct {
-		in     string
-		want   int64
-		wantOK bool
-	}{
-		{"", 0, false},
-		{"abc", 0, false},
-		{"123", 123, true},
-		{"  42  ", 42, true},
-		{"-1", -1, true},
-	}
-	for _, tc := range cases {
-		got, ok := parseInt64(tc.in)
-		if got != tc.want || ok != tc.wantOK {
-			t.Errorf("parseInt64(%q) = (%d, %v), want (%d, %v)", tc.in, got, ok, tc.want, tc.wantOK)
-		}
-	}
-}
-
-func TestParseInt(t *testing.T) {
-	if parseInt("") != 0 {
-		t.Errorf("empty should be 0")
-	}
-	if parseInt("garbage") != 0 {
-		t.Errorf("garbage should be 0")
-	}
-	if parseInt(" 75 ") != 75 {
-		t.Errorf("expected 75")
-	}
-}
-
 func TestParseBoolish(t *testing.T) {
 	cases := map[string]bool{
 		"":      false,
@@ -73,17 +41,10 @@ func TestNormaliseTags(t *testing.T) {
 	}
 }
 
-func TestNilInt(t *testing.T) {
-	if nilInt(0) != nil {
-		t.Errorf("0 should be nil")
-	}
-	if v := nilInt(42); v != 42 {
-		t.Errorf("expected 42, got %v", v)
-	}
-}
-
 // TestThreatFoxResponse_Unmarshal pins the JSON shape the ingestor expects.
-// Drift in field names is the single most common reason the upstream
+// Field types are based on a live response captured 2026-05-16: `id` and
+// `confidence_level` are numeric, `anonymous` is the string "0" / "1".
+// Drift in field names/types is the single most common reason the upstream
 // abuse.ch API breaks ingestion silently; catch it here.
 func TestThreatFoxResponse_Unmarshal(t *testing.T) {
 	const sample = `{
@@ -97,7 +58,7 @@ func TestThreatFoxResponse_Unmarshal(t *testing.T) {
 			"malware_alias": "LockBit",
 			"malware_printable": "LockBit",
 			"malware_malpedia": "https://malpedia.caad.fkie.fraunhofer.de/details/win.lockbit",
-			"confidence_level": "75",
+			"confidence_level": 75,
 			"first_seen": "2026-05-15 12:00:00",
 			"last_seen": "2026-05-16 12:00:00",
 			"reporter": "anon",
@@ -123,6 +84,9 @@ func TestThreatFoxResponse_Unmarshal(t *testing.T) {
 	}
 	if ioc.IocType != "ip:port" {
 		t.Errorf("ioc type = %q", ioc.IocType)
+	}
+	if ioc.ConfidenceLevel == nil || *ioc.ConfidenceLevel != 75 {
+		t.Errorf("confidence_level = %v", ioc.ConfidenceLevel)
 	}
 	if !reflect.DeepEqual(ioc.Tags, []string{"c2", "lockbit"}) {
 		t.Errorf("tags = %v", ioc.Tags)
