@@ -21,6 +21,7 @@ type Config struct {
 	OSV      OsvConfig      `mapstructure:"osv"`
 	GHSA     GhsaConfig     `mapstructure:"ghsa"`
 	Abusech  AbusechConfig  `mapstructure:"abusech"`
+	MSF      MsfConfig      `mapstructure:"msf"`
 	Alerting AlertingConfig `mapstructure:"alerting"`
 }
 
@@ -86,6 +87,15 @@ type AbusechConfig struct {
 // UrlhausConfig controls the URLhaus CSV ingestor. URL defaults to the
 // public `csv_recent` endpoint which covers the last few days of URLs.
 type UrlhausConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	PollInterval string `mapstructure:"poll_interval"`
+	URL          string `mapstructure:"url"`
+}
+
+// MsfConfig controls the Metasploit Framework module metadata ingestor.
+// URL defaults to the raw db/modules_metadata_base.json in the master
+// branch of github.com/rapid7/metasploit-framework.
+type MsfConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	PollInterval string `mapstructure:"poll_interval"`
 	URL          string `mapstructure:"url"`
@@ -164,6 +174,10 @@ func (c *GhsaConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *UrlhausConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *MsfConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
 

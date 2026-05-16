@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Metasploit module metadata ingest (Tier-1) — `internal/msf/`, migration `20260516170000_create_msf_modules.sql`
+- New `MsfRunner` fetches Rapid7's pre-extracted JSON cache at
+  `raw.githubusercontent.com/rapid7/metasploit-framework/master/db/modules_metadata_base.json`
+  — a single ~10 MB file with every module's metadata already
+  structured. Avoids any Ruby parsing.
+- New `msf_modules` table: `fullname` PK (e.g. `exploit/linux/http/foo`),
+  `module_type`, `rank` + `rank_label` (manual / low / average / normal
+  / good / great / excellent), `disclosure_date`, `authors[]`,
+  `refs[]`, `cves[]` (denormalised from refs), `platforms[]`,
+  `aliases[]`, plus full upstream record in `raw` jsonb.
+- 6 indexes including GIN on `cves`/`platforms`, partial btree on
+  `disclosure_date DESC WHERE NOT NULL`, btree on `rank DESC`.
+- Idempotent upsert keyed on `raw IS DISTINCT FROM EXCLUDED.raw` so
+  unchanged modules are no-ops on re-run.
+- Prometheus: `tigerfetch_msf_fetches_total{status}`,
+  `tigerfetch_msf_modules_processed_total`,
+  `tigerfetch_msf_run_duration_seconds`.
+- Verified locally: 6,632 modules loaded in 4 s; 3,141 distinct CVEs
+  covered; module mix 2,648 exploit / 2,141 payload / 1,336 auxiliary /
+  432 post / 49 encoder / 14 nop / 12 evasion; **1,368 excellent-rank +
+  296 great-rank** weaponised exploits.
+- 7 unit tests covering CVE extraction (case-insensitive + dedup +
+  filtering OSVDB/URL/EDB refs), platform splitting, date parsing,
+  NUL-stripping, rank-label mapping.
+
 #### URLhaus ingest (Tier-1 abuse.ch) — `internal/abusech/`, migration `20260516150000_create_urlhaus_urls.sql`
 - New `UrlhausRunner` polls the public abuse.ch URLhaus CSV feed
   (`urlhaus.abuse.ch/downloads/csv_recent/` — no auth) and upserts
