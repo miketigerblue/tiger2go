@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"tiger2go/internal/abusech"
 	"tiger2go/internal/alerting"
 	"tiger2go/internal/config"
 	"tiger2go/internal/cve"
@@ -231,6 +232,32 @@ func main() {
 				case <-ticker.C:
 					if err := runner.Run(ctx); err != nil {
 						slog.Error("GHSA runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	if cfg.Abusech.URLhaus.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := abusech.NewUrlhausRunner(pool, cfg.Abusech.URLhaus)
+			interval, err := cfg.Abusech.URLhaus.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid URLhaus poll interval, using default 1h", "error", err)
+				interval = time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("URLhaus runner error", "error", err)
 					}
 					ticker.Reset(interval)
 				}
