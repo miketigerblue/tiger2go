@@ -19,6 +19,7 @@ type Config struct {
 	EPSS     EpssConfig     `mapstructure:"epss"`
 	KEV      KevConfig      `mapstructure:"kev"`
 	OSV      OsvConfig      `mapstructure:"osv"`
+	GHSA     GhsaConfig     `mapstructure:"ghsa"`
 	Alerting AlertingConfig `mapstructure:"alerting"`
 }
 
@@ -60,6 +61,18 @@ type OsvConfig struct {
 	PollInterval string   `mapstructure:"poll_interval"`
 	URL          string   `mapstructure:"url"`
 	Ecosystems   []string `mapstructure:"ecosystems"`
+}
+
+// GhsaConfig controls the GitHub Security Advisory Database ingestor.
+// URL defaults to api.github.com/advisories. Token is an optional GitHub
+// PAT — anonymous works but rate-limits at 60 req/h vs 5000 req/h
+// authenticated (a 100× difference matters for the initial backfill).
+type GhsaConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	PollInterval string `mapstructure:"poll_interval"`
+	URL          string `mapstructure:"url"`
+	Token        string `mapstructure:"token"`
+	PageSize     int    `mapstructure:"page_size"` // capped at 100 by GitHub API
 }
 
 type AlertingConfig struct {
@@ -127,6 +140,10 @@ func (c *KevConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *OsvConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *GhsaConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
 

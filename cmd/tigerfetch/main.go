@@ -15,6 +15,7 @@ import (
 	"tiger2go/internal/config"
 	"tiger2go/internal/cve"
 	"tiger2go/internal/db"
+	"tiger2go/internal/ghsa"
 	"tiger2go/internal/ingestor"
 	"tiger2go/internal/metrics"
 	"tiger2go/internal/osv"
@@ -204,6 +205,32 @@ func main() {
 				case <-ticker.C:
 					if err := runner.Run(ctx); err != nil {
 						slog.Error("OSV runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	if cfg.GHSA.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := ghsa.NewRunner(pool, cfg.GHSA)
+			interval, err := cfg.GHSA.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid GHSA poll interval, using default 1h", "error", err)
+				interval = time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("GHSA runner error", "error", err)
 					}
 					ticker.Reset(interval)
 				}

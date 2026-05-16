@@ -11,6 +11,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### GHSA ingest (Tier-1 source) — `internal/ghsa/`, migration `20260516140000_create_ghsa_advisories.sql`
+- New `GhsaRunner` polls the GitHub Security Advisory Database REST API
+  (`api.github.com/advisories`) with incremental `?modified=>{cursor}`
+  filtering and follows the `Link: rel="next"` pagination. Cursor
+  persisted in `ingest_state` (source=`GHSA`); progress survives
+  errors mid-stream so a rate-limit failure doesn't replay the run.
+- New `ghsa_advisories` table denormalises hot columns: `ghsa_id` (PK),
+  `cve_id`, `severity` (text enum), `cvss_v3` + `cvss_v3_vector`,
+  `cvss_v4` + `cvss_v4_vector`, `cwes[]`, `ecosystems[]`,
+  `package_names[]`, `published` / `updated` / `withdrawn` —
+  alongside `vulnerabilities` + `refs` jsonb and a `raw` jsonb that
+  preserves the full upstream record.
+- Eight indexes including GIN on `package_names` (joins to
+  tiger-watch SBOM matching), GIN on `cwes`, btree on `cve_id` (links
+  to NVD / OSV via alias), partial btree on active (non-withdrawn)
+  advisories.
+- Prometheus: `tigerfetch_ghsa_fetches_total{status}`,
+  `tigerfetch_ghsa_advisories_processed_total`,
+  `tigerfetch_ghsa_pages_fetched_total`,
+  `tigerfetch_ghsa_run_duration_seconds`,
+  `tigerfetch_ghsa_rate_limit_remaining`.
+- Anonymous works (60 req/h); a GitHub PAT in `cfg.GHSA.Token` lifts
+  the cap to 5,000 req/h — needed for the initial ~30K-advisory
+  backfill, optional for incremental runs.
+- Verified locally: 271 advisories loaded before hitting the
+  anonymous rate limit; all 271 had structured CVSS, 187 had CWEs
+  across 8 ecosystems. Cursor advance + idempotent upsert
+  (`WHERE updated IS DISTINCT FROM EXCLUDED.updated`) verified.
+- 8 unit tests covering `Link` header parsing, identifier extraction,
+  CWE/ecosystem/package-name dedup, time parsing.
+
 #### OSV ingest (Tier-1 source) — `internal/osv/`, migration `20260516130000_create_osv_vulns.sql`
 - New `OsvRunner` polls per-ecosystem OSV bundles
   (`osv-vulnerabilities.storage.googleapis.com/<eco>/all.zip`) and upserts
