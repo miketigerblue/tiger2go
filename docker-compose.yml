@@ -42,6 +42,8 @@ services:
     build: .
     image: tigerfetch:latest
     container_name: tigerfetch
+    env_file:
+      - .env   # secrets only — ABUSECH_API_KEY, NVD_API_KEY, GHSA_TOKEN; database_url stays in Config.toml
     volumes:
       - ./Config.toml:/home/app/Config.toml:ro
     ports:

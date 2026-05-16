@@ -10,9 +10,9 @@ sophistication. Tier 1 is the biggest gap; Tier 3 is the cleanest upgrade.
 
 ## Status snapshot (2026-05-16)
 
-- **Tier 1** — 5 of 7 sources shipped (OSV, GHSA, URLhaus, Nuclei, MSF).
-  The two remaining abuse.ch sources (ThreatFox, MalwareBazaar) are
-  deferred — they moved to auth-required in 2024 and need an API key.
+- **Tier 1** — all 7 sources shipped (OSV, GHSA, URLhaus, ThreatFox,
+  MalwareBazaar, Nuclei, MSF). ThreatFox + MalwareBazaar landed once the
+  abuse.ch unified Auth-Key was registered (env: `ABUSECH_API_KEY`).
 - **Tier 2** — not started.
 - **Tier 3** — not started.
 
@@ -29,8 +29,8 @@ do, and exploit-commodity timing that runs weeks ahead of EPSS movement.
 | **OSV** | `osv-vulnerabilities.storage.googleapis.com/<eco>/all.zip` — JSON bundles per ecosystem | Per-ecosystem CVE / advisory feed for npm, PyPI, Maven, Go, RubyGems, crates.io, Packagist, NuGet, Pub, Hex, Hackage. NVD systematically misses package-level supply-chain advisories. With tiger-watch's SBOM matching, this is the join key. | 1–2 d | **Shipped — [PR #19](https://github.com/miketigerblue/tiger2go/pull/19)** (19,563 PyPI advisories verified) |
 | **GitHub Advisory DB (GHSA)** | `api.github.com/advisories` — REST + GraphQL | Slightly higher fidelity than OSV's GitHub feed, with full CVSS + CWE per advisory. Co-references OSV. Requires a GitHub token (free PAT works). | 1 d | **Shipped — [PR #21](https://github.com/miketigerblue/tiger2go/pull/21)** |
 | **abuse.ch — URLhaus** | public CSV at `urlhaus.abuse.ch/downloads/csv_recent/` — no auth | Malicious-URL feed keyed by malware family. Validates LLM-extracted URL IOCs (24K URLs, ~2K live; tags Mozi / ClearFake / mirai join to `analysis_malware`). | 1 d | **Shipped — [PR #22](https://github.com/miketigerblue/tiger2go/pull/22)** |
-| **abuse.ch — ThreatFox** | API — auth required since 2024 | IP / domain / file-hash IOCs keyed by malware family. Broader IOC types than URLhaus. | ~1 d | **Deferred** — needs an abuse.ch API key |
-| **abuse.ch — MalwareBazaar** | API — auth required since 2024 | Malware sample hashes (SHA-256 / -1 / MD5) keyed by family. Validates LLM-extracted hash IOCs. | ~1 d | **Deferred** — needs an abuse.ch API key |
+| **abuse.ch — ThreatFox** | `threatfox-api.abuse.ch/api/v1/` — POST JSON, Auth-Key header | IP / domain / file-hash IOCs keyed by malware family with 0-100 confidence + malpedia mapping. Broader IOC types than URLhaus. | ~1 d | **Shipped — 2026-05-16** (auth-key implementation; `threatfox_iocs` table, 7-day rolling window, idempotent upserts) |
+| **abuse.ch — MalwareBazaar** | `mb-api.abuse.ch/api/v1/` — POST form, Auth-Key header | Malware sample hashes (SHA-256 / -1 / MD5 / imphash / ssdeep / tlsh) keyed by family signature. Validates LLM-extracted hash IOCs. | ~1 d | **Shipped — 2026-05-16** (auth-key implementation; `malwarebazaar_samples` table, `selector=time` 60-min window) |
 | **Nuclei templates** | `github.com/projectdiscovery/nuclei-templates` main-branch tarball | When a CVE gets a Nuclei template, it has just become *commodity* — every scanner now finds it. Tracking template additions is a leading indicator that runs 2–6 weeks ahead of EPSS movement. | 1 d | **Shipped — [PR #23](https://github.com/miketigerblue/tiger2go/pull/23)** (5,558 templates / 4,103 CVEs) |
 | **Metasploit module metadata** | Rapid7's pre-built JSON cache at `db/modules_metadata_base.json` | Same logic — when a CVE gets a Metasploit module, weaponised exploit availability is confirmed. Ranking metadata (excellent / great / good / …) distinguishes reliability. | ~1 d | **Shipped — [PR #24](https://github.com/miketigerblue/tiger2go/pull/24)** (6,632 modules / 3,141 CVEs / 1,368 excellent-rank) |
 
@@ -117,3 +117,5 @@ can.
 | 2026-05-16 | Ship URLhaus alone from the abuse.ch family in v1. | Public CSV download requires no auth; ThreatFox and MalwareBazaar moved to auth-required in 2024 and need a key. Deferred until that's set up. |
 | 2026-05-16 | Use Nuclei's main-branch tarball, walk in-memory. | Single ~50 MB request rather than GitHub-API per-file fetches (rate-limited and chatty). Stream gzip+tar decode keeps memory bounded. |
 | 2026-05-16 | Use Rapid7's pre-extracted `modules_metadata_base.json` for MSF. | A single 10 MB JSON is dramatically simpler than parsing Ruby modules. Idempotent on the upstream record. |
+| 2026-05-16 | Share one `ABUSECH_API_KEY` across URLhaus / ThreatFox / MalwareBazaar runners. | abuse.ch unified all services onto a single Auth-Key in 2024; carrying three near-identical keys would duplicate config for no upside. URLhaus still works key-less and short-circuits its auth path. |
+| 2026-05-16 | Use the JSON / form APIs for ThreatFox + MalwareBazaar, not the CSV-zip bulk exports. | The APIs return the same data with cleaner field names, no zip decoding, and a documented `query_status` envelope that distinguishes auth failures from empty windows. The 60-min / 7-day windows are small enough to poll comfortably. |
