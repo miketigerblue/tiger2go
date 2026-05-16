@@ -175,6 +175,36 @@ var OsvRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 })
 
 // ---------------------------------------------------------------------------
+// GHSA
+// ---------------------------------------------------------------------------
+
+var GhsaFetches = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_ghsa_fetches_total",
+	Help: "GHSA Run() outcomes (success, error).",
+}, []string{"status"})
+
+var GhsaAdvisoriesProcessed = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_ghsa_advisories_processed_total",
+	Help: "Total GHSA advisories upserted.",
+})
+
+var GhsaPagesFetched = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_ghsa_pages_fetched_total",
+	Help: "GHSA API pages fetched.",
+})
+
+var GhsaRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_ghsa_run_duration_seconds",
+	Help:    "Duration of a full GHSA Run() cycle.",
+	Buckets: []float64{5, 15, 30, 60, 120, 300, 600},
+})
+
+var GhsaRateLimitRemaining = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "tigerfetch_ghsa_rate_limit_remaining",
+	Help: "Remaining requests on the GitHub API rate-limit window.",
+})
+
+// ---------------------------------------------------------------------------
 // Alerting
 // ---------------------------------------------------------------------------
 
