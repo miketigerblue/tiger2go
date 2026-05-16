@@ -205,6 +205,26 @@ var GhsaRateLimitRemaining = promauto.NewGauge(prometheus.GaugeOpts{
 })
 
 // ---------------------------------------------------------------------------
+// abuse.ch — URLhaus
+// ---------------------------------------------------------------------------
+
+var UrlhausFetches = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_urlhaus_fetches_total",
+	Help: "URLhaus CSV fetch outcomes (success, error).",
+}, []string{"status"})
+
+var UrlhausRowsProcessed = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_urlhaus_rows_processed_total",
+	Help: "Total URLhaus CSV rows upserted.",
+})
+
+var UrlhausRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_urlhaus_run_duration_seconds",
+	Help:    "Duration of a full URLhaus Run() cycle.",
+	Buckets: []float64{1, 5, 15, 30, 60, 120},
+})
+
+// ---------------------------------------------------------------------------
 // Alerting
 // ---------------------------------------------------------------------------
 

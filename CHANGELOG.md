@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### URLhaus ingest (Tier-1 abuse.ch) — `internal/abusech/`, migration `20260516150000_create_urlhaus_urls.sql`
+- New `UrlhausRunner` polls the public abuse.ch URLhaus CSV feed
+  (`urlhaus.abuse.ch/downloads/csv_recent/` — no auth) and upserts
+  every row into a new `urlhaus_urls` table. The `id` column is the
+  URLhaus internal numeric id, allowing idempotent re-runs that only
+  touch rows whose `url_status` or `last_online` actually changed.
+- New `urlhaus_urls` columns: `url` (indexed), `url_status`, `threat`,
+  `tags[]` (GIN), `date_added`, `last_online`, `reporter`, `urlhaus_link`,
+  plus full CSV row in `raw` text for round-trip preservation.
+- Five indexes including GIN on `tags` for malware-family lookups and
+  partial btree on `last_online DESC WHERE url_status = online` for
+  the live-IOC analyst view.
+- Prometheus: `tigerfetch_urlhaus_fetches_total{status}`,
+  `tigerfetch_urlhaus_rows_processed_total`,
+  `tigerfetch_urlhaus_run_duration_seconds`.
+- Verified locally: 24,908 URLs loaded in a single fetch; 2,106
+  currently online; 47 distinct reporters; tags include Mozi /
+  ClearFake / mirai / SnappyClient — directly joinable to
+  `analysis_malware.canonical_name`.
+- Package layout (`internal/abusech/`) is structured so ThreatFox and
+  MalwareBazaar can land alongside URLhaus once an abuse.ch API key
+  is configured (both moved to auth-required in 2024).
+
 #### GHSA ingest (Tier-1 source) — `internal/ghsa/`, migration `20260516140000_create_ghsa_advisories.sql`
 - New `GhsaRunner` polls the GitHub Security Advisory Database REST API
   (`api.github.com/advisories`) with incremental `?modified=>{cursor}`

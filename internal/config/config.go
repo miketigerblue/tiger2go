@@ -20,6 +20,7 @@ type Config struct {
 	KEV      KevConfig      `mapstructure:"kev"`
 	OSV      OsvConfig      `mapstructure:"osv"`
 	GHSA     GhsaConfig     `mapstructure:"ghsa"`
+	Abusech  AbusechConfig  `mapstructure:"abusech"`
 	Alerting AlertingConfig `mapstructure:"alerting"`
 }
 
@@ -73,6 +74,21 @@ type GhsaConfig struct {
 	URL          string `mapstructure:"url"`
 	Token        string `mapstructure:"token"`
 	PageSize     int    `mapstructure:"page_size"` // capped at 100 by GitHub API
+}
+
+// AbusechConfig controls the abuse.ch ingestors. v1 ships URLhaus (public
+// CSV, no auth); ThreatFox and MalwareBazaar are auth-required as of 2024
+// and will land as follow-ups once an API key is configured.
+type AbusechConfig struct {
+	URLhaus UrlhausConfig `mapstructure:"urlhaus"`
+}
+
+// UrlhausConfig controls the URLhaus CSV ingestor. URL defaults to the
+// public `csv_recent` endpoint which covers the last few days of URLs.
+type UrlhausConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	PollInterval string `mapstructure:"poll_interval"`
+	URL          string `mapstructure:"url"`
 }
 
 type AlertingConfig struct {
@@ -144,6 +160,10 @@ func (c *OsvConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *GhsaConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *UrlhausConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
 
