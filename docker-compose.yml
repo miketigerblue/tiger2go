@@ -8,7 +8,12 @@ volumes:
 
 services:
   db:
-    image: postgres:16
+    # pgvector/pgvector:pg16 — vanilla Postgres 16 with the vector extension
+    # baked into the image. Required because tiger-eye's analysis_embedding
+    # table uses pgvector; a plain postgres:16 image leaves the catalog
+    # registration pointing at a missing $libdir/vector.so and every
+    # embedding insert fails. Do not switch back to postgres:16.
+    image: pgvector/pgvector:pg16
     container_name: tiger2go_postgres
     environment:
       POSTGRES_USER: user
