@@ -17,6 +17,7 @@ import (
 	"tiger2go/internal/db"
 	"tiger2go/internal/ingestor"
 	"tiger2go/internal/metrics"
+	"tiger2go/internal/osv"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -177,6 +178,32 @@ func main() {
 				case <-ticker.C:
 					if err := runner.Run(ctx); err != nil {
 						slog.Error("EPSS runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	if cfg.OSV.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := osv.NewRunner(pool, cfg.OSV)
+			interval, err := cfg.OSV.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid OSV poll interval, using default 24h", "error", err)
+				interval = 24 * time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("OSV runner error", "error", err)
 					}
 					ticker.Reset(interval)
 				}

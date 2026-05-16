@@ -18,6 +18,7 @@ type Config struct {
 	NVD      NvdConfig      `mapstructure:"nvd"`
 	EPSS     EpssConfig     `mapstructure:"epss"`
 	KEV      KevConfig      `mapstructure:"kev"`
+	OSV      OsvConfig      `mapstructure:"osv"`
 	Alerting AlertingConfig `mapstructure:"alerting"`
 }
 
@@ -48,6 +49,17 @@ type KevConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	PollInterval string `mapstructure:"poll_interval"`
 	URL          string `mapstructure:"url"`
+}
+
+// OsvConfig controls the OSV (Open Source Vulnerabilities) ingestor.
+// URL defaults to the GCS public bucket; Ecosystems is the list of
+// per-ecosystem bundles to poll (PyPI, npm, Go, Maven, RubyGems, crates.io,
+// Packagist, NuGet, Pub, Hex, Hackage, …).
+type OsvConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	PollInterval string   `mapstructure:"poll_interval"`
+	URL          string   `mapstructure:"url"`
+	Ecosystems   []string `mapstructure:"ecosystems"`
 }
 
 type AlertingConfig struct {
@@ -111,6 +123,10 @@ func (c *EpssConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *KevConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *OsvConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
 

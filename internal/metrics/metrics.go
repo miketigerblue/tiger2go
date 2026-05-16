@@ -155,6 +155,26 @@ var KevCursorLag = promauto.NewGauge(prometheus.GaugeOpts{
 })
 
 // ---------------------------------------------------------------------------
+// OSV
+// ---------------------------------------------------------------------------
+
+var OsvFetches = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_osv_fetches_total",
+	Help: "OSV Run() outcomes per ecosystem (success, error, skipped).",
+}, []string{"ecosystem", "status"})
+
+var OsvVulnsProcessed = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_osv_vulns_processed_total",
+	Help: "Total OSV vulnerability records upserted per ecosystem.",
+}, []string{"ecosystem"})
+
+var OsvRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_osv_run_duration_seconds",
+	Help:    "Duration of a full OSV Run() cycle (all ecosystems).",
+	Buckets: []float64{5, 15, 30, 60, 120, 300, 600},
+})
+
+// ---------------------------------------------------------------------------
 // Alerting
 // ---------------------------------------------------------------------------
 
