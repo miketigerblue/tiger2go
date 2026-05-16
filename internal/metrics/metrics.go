@@ -205,6 +205,26 @@ var GhsaRateLimitRemaining = promauto.NewGauge(prometheus.GaugeOpts{
 })
 
 // ---------------------------------------------------------------------------
+// Metasploit Framework modules
+// ---------------------------------------------------------------------------
+
+var MsfFetches = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_msf_fetches_total",
+	Help: "Metasploit module metadata Run() outcomes (success, error).",
+}, []string{"status"})
+
+var MsfModulesProcessed = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_msf_modules_processed_total",
+	Help: "Total Metasploit modules upserted.",
+})
+
+var MsfRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_msf_run_duration_seconds",
+	Help:    "Duration of a full MSF metadata Run() cycle.",
+	Buckets: []float64{5, 15, 30, 60, 120, 300},
+})
+
+// ---------------------------------------------------------------------------
 // abuse.ch — URLhaus
 // ---------------------------------------------------------------------------
 

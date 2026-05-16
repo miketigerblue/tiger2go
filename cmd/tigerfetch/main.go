@@ -19,6 +19,7 @@ import (
 	"tiger2go/internal/ghsa"
 	"tiger2go/internal/ingestor"
 	"tiger2go/internal/metrics"
+	"tiger2go/internal/msf"
 	"tiger2go/internal/osv"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -258,6 +259,32 @@ func main() {
 				case <-ticker.C:
 					if err := runner.Run(ctx); err != nil {
 						slog.Error("URLhaus runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	if cfg.MSF.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := msf.NewRunner(pool, cfg.MSF)
+			interval, err := cfg.MSF.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid MSF poll interval, using default 24h", "error", err)
+				interval = 24 * time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("MSF runner error", "error", err)
 					}
 					ticker.Reset(interval)
 				}
