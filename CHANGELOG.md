@@ -28,6 +28,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Future EPSS pulls should call this function post-fetch (cron,
   pg_cron, or tigerfetch hook — TBD).
 
+#### Comparison views: legacy.* vs public.* (`20260516120000_comparison_views_legacy_vs_public.sql`)
+- Three analyst-facing views exposing what the May-2026 migration
+  changed structurally. They join the historical `legacy.*` schema
+  (restored from the prod fly.io dump) with `public.*` (the live new
+  model).
+- `v_actor_normalisation_demo` — one-row summary contrasting legacy's
+  free-text `analysis.potential_threat_actors` JSON arrays with the new
+  `public.threat_actors` canonical entities + `analysis_actor` join
+  table. Reports the noise-reduction ratio (distinct lowercased raw
+  strings ÷ canonical entities). Current value: **15.2×** (7,412 →
+  488).
+- `v_kev_demotion` — per-CVE side-by-side of `public.cve_kev` typed
+  columns vs the same fields trapped inside `legacy.cve_enriched.json`
+  (where `source='CISA-KEV'`). Surfaces concrete losses, e.g. the
+  legacy `knownRansomwareCampaignUse` was stored as the string
+  `"Unknown"` rather than the typed boolean used now.
+- `v_analysis_comparison` — for each of the 1,608 GUIDs enriched by
+  *both* the v0.1.x (legacy) and v0.2.x (new) pipelines, joins the two
+  verdicts side-by-side: severity agreement, confidence delta,
+  threat-type categorisation (new-only), per-row provenance, and
+  timestamps. Lets analysts spot-check model drift across the
+  migration.
+
 ---
 
 ## [1.3.1] - 2026-05-13
