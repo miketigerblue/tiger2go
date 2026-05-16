@@ -35,6 +35,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 7 unit tests covering CVE extraction (case-insensitive + dedup +
   filtering OSVDB/URL/EDB refs), platform splitting, date parsing,
   NUL-stripping, rank-label mapping.
+#### Nuclei templates ingest (Tier-1 source) — `internal/nuclei/`, migration `20260516160000_create_nuclei_templates.sql`
+- New `NucleiRunner` downloads the main-branch tarball of
+  `github.com/projectdiscovery/nuclei-templates`, stream-walks the tar
+  entries in-memory, parses every YAML under the configured subdirs
+  (default: `http/cves/`, `http/vulnerabilities/`, `dns/`,
+  `network/cves/`, `file/`, `javascript/cves/`, `ssl/`) and upserts
+  every template into the new `nuclei_templates` table.
+- Idempotent: SHA-256 of the YAML body is the change-detection key;
+  re-runs touch zero rows when there are no upstream changes.
+- CVE extraction collects refs from three sources (classification
+  `cve-id`, `tags` field, template `id`) and dedupes uppercase.
+- Handles the Nuclei YAML quirks where `author`, `tags`, `cve-id`,
+  `cwe-id` can be either a single scalar or a sequence.
+- NUL-byte stripping on text columns (some templates carry literal
+  `0x00` in payload examples; Postgres text rejects them).
+- Prometheus: `tigerfetch_nuclei_fetches_total{status}`,
+  `tigerfetch_nuclei_templates_processed_total`,
+  `tigerfetch_nuclei_run_duration_seconds`.
+- Verified locally: 5,558 templates loaded in 4 s; 4,103 distinct CVEs
+  covered; severity distribution 1,610 critical + 1,581 high + 1,808
+  medium + 481 info + 62 low + 16 unknown.
+- 9 unit tests covering tar-entry path normalisation, subdir
+  filtering, YAML scalar/sequence flexibility, CVE/CWE extraction,
+  template parsing.
 
 #### URLhaus ingest (Tier-1 abuse.ch) — `internal/abusech/`, migration `20260516150000_create_urlhaus_urls.sql`
 - New `UrlhausRunner` polls the public abuse.ch URLhaus CSV feed

@@ -20,6 +20,7 @@ import (
 	"tiger2go/internal/ingestor"
 	"tiger2go/internal/metrics"
 	"tiger2go/internal/msf"
+	"tiger2go/internal/nuclei"
 	"tiger2go/internal/osv"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -285,6 +286,32 @@ func main() {
 				case <-ticker.C:
 					if err := runner.Run(ctx); err != nil {
 						slog.Error("MSF runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	if cfg.Nuclei.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := nuclei.NewRunner(pool, cfg.Nuclei)
+			interval, err := cfg.Nuclei.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid Nuclei poll interval, using default 24h", "error", err)
+				interval = 24 * time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("Nuclei runner error", "error", err)
 					}
 					ticker.Reset(interval)
 				}
