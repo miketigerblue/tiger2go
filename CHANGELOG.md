@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### OSV ingest (Tier-1 source) — `internal/osv/`, migration `20260516130000_create_osv_vulns.sql`
+- New `OsvRunner` polls per-ecosystem OSV bundles
+  (`osv-vulnerabilities.storage.googleapis.com/<eco>/all.zip`) and upserts
+  every advisory into a new `osv_vulns` table. Configurable ecosystems
+  list (PyPI / npm / Go / Maven / RubyGems / crates.io / Packagist /
+  NuGet / Pub / Hex / Hackage / …). Idempotent: re-fetching with no
+  upstream changes touches zero rows thanks to a `WHERE modified IS
+  DISTINCT FROM EXCLUDED.modified` guard.
+- `osv_vulns` columns: typed denormalisations for `id`, `ecosystem`,
+  `package_names[]`, `aliases[]` (CVE IDs etc.), `cvss_v3`, `published`,
+  `modified`, `withdrawn`; plus `affected`/`refs`/`severity` jsonb and a
+  `raw` jsonb that preserves the full upstream advisory.
+- Indexes: GIN on `package_names` (joins to tiger-watch SBOM matching),
+  GIN on `aliases` (CVE-ID lookups), btree on `modified DESC`, partial
+  btree on active (non-withdrawn) advisories per ecosystem, partial
+  btree on `cvss_v3` where present.
+- Prometheus: `tigerfetch_osv_fetches_total{ecosystem,status}`,
+  `tigerfetch_osv_vulns_processed_total{ecosystem}`,
+  `tigerfetch_osv_run_duration_seconds`.
+- Verified locally: 19,563 PyPI advisories loaded in 13 s on first run;
+  re-run touches 0 rows (idempotent).
+- Known limitation: `cvss_v3` is NULL for advisories that publish only
+  the CVSS vector (the majority of GHSA-sourced PyPI entries — 4,971 of
+  19,563). Adding a CVSS-vector evaluator is a follow-up.
+
 #### EPSS materialisation (`20260516_materialize_epss_to_cve_enriched.sql`)
 - New `materialize_epss_to_cve_enriched()` PL/pgSQL function that pulls
   the latest EPSS score per CVE from the `epss_daily` partitions and
