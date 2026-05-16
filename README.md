@@ -145,6 +145,12 @@ Configuration is handled via `Config.toml` and environment variables. Key sectio
 *   `internal/db`: Database connection and migration logic.
 *   `internal/ingestor`: RSS/Atom feed processing logic.
 *   `internal/cve`: Specialized modules for NVD, KEV, and EPSS.
+*   `internal/osv`: OSV (Open Source Vulnerabilities) per-ecosystem ingest.
 *   `internal/metrics`: Prometheus metric definitions, pgxpool collector, HTTP middleware.
 *   `grafana/`: Provisioned Grafana dashboards and datasource configuration.
 *   `migrations/`: SQL migration files (Goose compatible).
+*   `docs/`: Design notes and decision records.
+
+## 📚 Documentation
+
+*   [`docs/SOURCES-TIERED.md`](docs/SOURCES-TIERED.md) — tiered plan for the additional intel sources we're adding beyond the core NVD / EPSS / KEV / RSS set (OSV shipped, GHSA / abuse.ch / Nuclei / Metasploit planned).
