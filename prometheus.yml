@@ -3,3 +3,17 @@ scrape_configs:
     scrape_interval: 15s
     static_configs:
       - targets: ['tigerfetch:9101']
+
+  - job_name: 'tiger-eye'
+    scrape_interval: 15s
+    # /metrics is a sub-app mount on FastAPI which 307-redirects to /metrics/.
+    # Specifying the trailing-slash path skips the redirect round-trip.
+    metrics_path: '/metrics/'
+    static_configs:
+      - targets: ['tiger-eye:8080']
+
+  - job_name: 'tiger-watch'
+    scrape_interval: 15s
+    metrics_path: '/metrics/'
+    static_configs:
+      - targets: ['tiger-watch:8081']

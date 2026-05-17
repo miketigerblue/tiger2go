@@ -8,7 +8,12 @@ volumes:
 
 services:
   db:
-    image: postgres:16
+    # pgvector/pgvector:pg16 — vanilla Postgres 16 with the vector extension
+    # baked into the image. Required because tiger-eye's analysis_embedding
+    # table uses pgvector; a plain postgres:16 image leaves the catalog
+    # registration pointing at a missing $libdir/vector.so and every
+    # embedding insert fails. Do not switch back to postgres:16.
+    image: pgvector/pgvector:pg16
     container_name: tiger2go_postgres
     environment:
       POSTGRES_USER: user
@@ -42,6 +47,8 @@ services:
     build: .
     image: tigerfetch:latest
     container_name: tigerfetch
+    env_file:
+      - .env   # secrets only — ABUSECH_API_KEY, NVD_API_KEY, GHSA_TOKEN; database_url stays in Config.toml
     volumes:
       - ./Config.toml:/home/app/Config.toml:ro
     ports:

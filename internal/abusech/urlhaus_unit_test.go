@@ -51,6 +51,22 @@ func TestParseTime_UrlhausFormat(t *testing.T) {
 	}
 }
 
+// TestParseTime_ThreatFoxFormat pins the trailing-TZ-abbreviation shape that
+// ThreatFox returns (e.g. "2026-05-16 18:46:11 UTC"). Without the MST layout,
+// every first_seen / last_seen ingested NULL.
+func TestParseTime_ThreatFoxFormat(t *testing.T) {
+	got := parseTime("2026-05-16 18:46:11 UTC")
+	if got == nil {
+		t.Fatal("expected non-nil")
+	}
+	if got.Hour() != 18 || got.Minute() != 46 || got.Second() != 11 {
+		t.Fatalf("unexpected time-of-day: %v", got)
+	}
+	if got.Location().String() != "UTC" {
+		t.Fatalf("expected UTC, got %s", got.Location())
+	}
+}
+
 func TestParseTime_EmptyAndGarbage(t *testing.T) {
 	if got := parseTime(""); got != nil {
 		t.Fatalf("expected nil for empty, got %v", got)

@@ -78,11 +78,15 @@ type GhsaConfig struct {
 	PageSize     int    `mapstructure:"page_size"` // capped at 100 by GitHub API
 }
 
-// AbusechConfig controls the abuse.ch ingestors. v1 ships URLhaus (public
-// CSV, no auth); ThreatFox and MalwareBazaar are auth-required as of 2024
-// and will land as follow-ups once an API key is configured.
+// AbusechConfig controls the abuse.ch ingestors. abuse.ch unified all of
+// their feeds onto a single Auth-Key in 2024; APIKey is shared across the
+// three sub-runners. URLhaus' public CSV still works without auth so it
+// keeps running even when APIKey is empty.
 type AbusechConfig struct {
-	URLhaus UrlhausConfig `mapstructure:"urlhaus"`
+	APIKey        string              `mapstructure:"api_key"`
+	URLhaus       UrlhausConfig       `mapstructure:"urlhaus"`
+	ThreatFox     ThreatFoxConfig     `mapstructure:"threatfox"`
+	MalwareBazaar MalwareBazaarConfig `mapstructure:"malwarebazaar"`
 }
 
 // UrlhausConfig controls the URLhaus CSV ingestor. URL defaults to the
@@ -91,6 +95,26 @@ type UrlhausConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	PollInterval string `mapstructure:"poll_interval"`
 	URL          string `mapstructure:"url"`
+}
+
+// ThreatFoxConfig controls the ThreatFox JSON-API ingestor.
+// URL defaults to https://threatfox-api.abuse.ch/api/v1/. Days is the
+// lookback window per poll (1-7); the abuse.ch upstream caps it at 7.
+type ThreatFoxConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	PollInterval string `mapstructure:"poll_interval"`
+	URL          string `mapstructure:"url"`
+	Days         int    `mapstructure:"days"`
+}
+
+// MalwareBazaarConfig controls the MalwareBazaar form-API ingestor.
+// URL defaults to https://mb-api.abuse.ch/api/v1/. Selector accepts
+// "time" (last 60 minutes — auth required) or a count like "100" / "1000".
+type MalwareBazaarConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	PollInterval string `mapstructure:"poll_interval"`
+	URL          string `mapstructure:"url"`
+	Selector     string `mapstructure:"selector"`
 }
 
 // MsfConfig controls the Metasploit Framework module metadata ingestor.
@@ -145,6 +169,14 @@ func Load() (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	// AutomaticEnv only resolves env vars during Get() — not during Unmarshal
+	// of nested struct keys that aren't already known via the config file or
+	// a SetDefault. Bind the credential keys explicitly so an empty/missing
+	// TOML stanza doesn't shadow the env var.
+	_ = v.BindEnv("abusech.api_key", "ABUSECH_API_KEY")
+	_ = v.BindEnv("ghsa.token", "GHSA_TOKEN")
+	_ = v.BindEnv("nvd.api_key", "NVD_API_KEY")
+
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -186,6 +218,14 @@ func (c *GhsaConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *UrlhausConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *ThreatFoxConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *MalwareBazaarConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }
 

@@ -267,6 +267,58 @@ func main() {
 		}()
 	}
 
+	if cfg.Abusech.ThreatFox.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := abusech.NewThreatFoxRunner(pool, cfg.Abusech.ThreatFox, cfg.Abusech.APIKey)
+			interval, err := cfg.Abusech.ThreatFox.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid ThreatFox poll interval, using default 1h", "error", err)
+				interval = time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("ThreatFox runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	if cfg.Abusech.MalwareBazaar.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := abusech.NewMalwareBazaarRunner(pool, cfg.Abusech.MalwareBazaar, cfg.Abusech.APIKey)
+			interval, err := cfg.Abusech.MalwareBazaar.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid MalwareBazaar poll interval, using default 1h", "error", err)
+				interval = time.Hour
+			}
+			ticker := time.NewTimer(0)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("MalwareBazaar runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
 	if cfg.MSF.Enabled {
 		workers.Add(1)
 		go func() {

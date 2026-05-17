@@ -627,6 +627,114 @@
         "rawSql": "SELECT title, link, feed_title AS feed, published, categories FROM current WHERE feed_url LIKE '${feed_source}' ORDER BY inserted_at DESC LIMIT 50",
         "format": "table"
       }]
+    },
+
+    {
+      "type": "row",
+      "title": "Tier-1 Threat-Intel Sources",
+      "gridPos": { "x": 0, "y": 77, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Records by source",
+      "gridPos": { "x": 0, "y": 78, "w": 24, "h": 5 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [{
+        "rawSql": "SELECT 'OSV' AS metric, COUNT(*)::float AS value FROM osv_vulns UNION ALL SELECT 'GHSA', COUNT(*) FROM ghsa_advisories UNION ALL SELECT 'URLhaus', COUNT(*) FROM urlhaus_urls UNION ALL SELECT 'ThreatFox', COUNT(*) FROM threatfox_iocs UNION ALL SELECT 'MalwareBazaar', COUNT(*) FROM malwarebazaar_samples UNION ALL SELECT 'Nuclei', COUNT(*) FROM nuclei_templates UNION ALL SELECT 'MSF', COUNT(*) FROM msf_modules",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "ThreatFox — top malware families, last 24h",
+      "gridPos": { "x": 0, "y": 83, "w": 12, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT malware_printable AS family, COUNT(*) AS iocs_24h, COUNT(*) FILTER (WHERE ioc_type IN ('ip:port','domain')) AS net_iocs, COUNT(*) FILTER (WHERE ioc_type = 'url') AS url_iocs, MAX(first_seen) AS most_recent FROM threatfox_iocs WHERE malware_printable IS NOT NULL AND first_seen > now() - interval '24 hours' GROUP BY malware_printable ORDER BY iocs_24h DESC LIMIT 15",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "MalwareBazaar — most-recent sample signatures",
+      "gridPos": { "x": 12, "y": 83, "w": 12, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT signature AS family, file_type, COUNT(*) AS samples, MAX(first_seen) AS most_recent FROM malwarebazaar_samples WHERE signature IS NOT NULL GROUP BY signature, file_type ORDER BY samples DESC LIMIT 15",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "Convergence — CVEs covered by ≥3 enrichment sources (last 7d)",
+      "gridPos": { "x": 0, "y": 93, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT cve AS cve_id, COUNT(DISTINCT a.guid) AS analyses, COUNT(DISTINCT a.source_name) AS sources, MAX(a.severity_level) AS max_sev, (k.cve_id IS NOT NULL) AS in_kev FROM analysis a, jsonb_array_elements_text(a.cve_references) AS cve LEFT JOIN cve_kev k ON k.cve_id = cve WHERE a.inserted_at > now() - interval '7 days' GROUP BY cve, k.cve_id HAVING COUNT(DISTINCT a.source_name) >= 3 ORDER BY sources DESC, analyses DESC LIMIT 15",
+        "format": "table"
+      }]
+    },
+
+    {
+      "type": "row",
+      "title": "SBOM Coverage",
+      "gridPos": { "x": 0, "y": 103, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "SBOM corpus",
+      "gridPos": { "x": 0, "y": 104, "w": 12, "h": 5 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "colorMode": "value", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "rawSql": "SELECT 'SBOMs ingested' AS metric, COUNT(*)::float AS value FROM sbom_documents UNION ALL SELECT 'Total packages', COUNT(*)::float FROM sbom_packages UNION ALL SELECT 'Distinct package names', COUNT(DISTINCT name)::float FROM sbom_packages",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "SBOMs ingested",
+      "gridPos": { "x": 12, "y": 104, "w": 12, "h": 5 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT name AS sbom, vendor, device_type, package_count AS pkgs, ingested_at FROM sbom_documents ORDER BY ingested_at DESC LIMIT 10",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "table",
+      "title": "Top OSV name-match candidates per SBOM (noisy — use /sbom/vulnerabilities for precise list)",
+      "gridPos": { "x": 0, "y": 109, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT d.device_type AS service, p.name AS package, p.version, COUNT(DISTINCT o.id) AS osv_advisories FROM sbom_packages p JOIN sbom_documents d ON d.id = p.document_id JOIN osv_vulns o ON p.name = ANY(o.package_names) WHERE o.modified > now() - interval '365 days' AND p.version IS NOT NULL AND p.version != '' GROUP BY d.device_type, p.name, p.version ORDER BY osv_advisories DESC LIMIT 15",
+        "format": "table"
+      }]
     }
   ]
 }

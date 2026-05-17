@@ -2261,6 +2261,132 @@
         "type": "prometheus",
         "uid": "prometheus"
       }
+    },
+    {
+      "type": "row",
+      "title": "Tier-1 Threat-Intel Sources",
+      "gridPos": { "x": 0, "y": 85, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Records Processed (since process start)",
+      "gridPos": { "x": 0, "y": 86, "w": 24, "h": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 100 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "targets": [
+        { "expr": "sum(tigerfetch_osv_vulns_processed_total)",                 "legendFormat": "OSV",          "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "tigerfetch_ghsa_advisories_processed_total",                "legendFormat": "GHSA",         "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "tigerfetch_urlhaus_rows_processed_total",                   "legendFormat": "URLhaus",      "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "tigerfetch_threatfox_iocs_processed_total",                 "legendFormat": "ThreatFox",    "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "tigerfetch_malwarebazaar_samples_processed_total",          "legendFormat": "MalwareBazaar","datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "tigerfetch_nuclei_templates_processed_total",               "legendFormat": "Nuclei",       "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "tigerfetch_msf_modules_processed_total",                    "legendFormat": "MSF",          "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Successful Ingest Runs (rate, by source)",
+      "gridPos": { "x": 0, "y": 90, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        { "expr": "sum(rate(tigerfetch_osv_fetches_total{status=\"success\"}[$__rate_interval]))",                  "legendFormat": "OSV",          "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_ghsa_fetches_total{status=\"success\"}[$__rate_interval])",                     "legendFormat": "GHSA",         "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_urlhaus_fetches_total{status=\"success\"}[$__rate_interval])",                  "legendFormat": "URLhaus",      "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_threatfox_fetches_total{status=\"success\"}[$__rate_interval])",                "legendFormat": "ThreatFox",    "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_malwarebazaar_fetches_total{status=\"success\"}[$__rate_interval])",            "legendFormat": "MalwareBazaar","datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_nuclei_fetches_total{status=\"success\"}[$__rate_interval])",                   "legendFormat": "Nuclei",       "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_msf_fetches_total{status=\"success\"}[$__rate_interval])",                      "legendFormat": "MSF",          "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Failed Ingest Runs (rate, by source) — should hover at 0",
+      "gridPos": { "x": 12, "y": 90, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "bars", "fillOpacity": 60, "spanNulls": true },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.001 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        { "expr": "sum(rate(tigerfetch_osv_fetches_total{status=\"error\"}[$__rate_interval]))",                   "legendFormat": "OSV",          "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_ghsa_fetches_total{status=\"error\"}[$__rate_interval])",                      "legendFormat": "GHSA",         "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_urlhaus_fetches_total{status=\"error\"}[$__rate_interval])",                   "legendFormat": "URLhaus",      "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_threatfox_fetches_total{status=\"error\"}[$__rate_interval])",                 "legendFormat": "ThreatFox",    "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_malwarebazaar_fetches_total{status=\"error\"}[$__rate_interval])",             "legendFormat": "MalwareBazaar","datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_nuclei_fetches_total{status=\"error\"}[$__rate_interval])",                    "legendFormat": "Nuclei",       "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "rate(tigerfetch_msf_fetches_total{status=\"error\"}[$__rate_interval])",                       "legendFormat": "MSF",          "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Run Duration p95 (by source)",
+      "gridPos": { "x": 0, "y": 98, "w": 24, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(tigerfetch_osv_run_duration_seconds_bucket[$__rate_interval])))",            "legendFormat": "OSV",          "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(tigerfetch_ghsa_run_duration_seconds_bucket[$__rate_interval])))",           "legendFormat": "GHSA",         "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(tigerfetch_urlhaus_run_duration_seconds_bucket[$__rate_interval])))",        "legendFormat": "URLhaus",      "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(tigerfetch_threatfox_run_duration_seconds_bucket[$__rate_interval])))",      "legendFormat": "ThreatFox",    "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(tigerfetch_malwarebazaar_run_duration_seconds_bucket[$__rate_interval])))",  "legendFormat": "MalwareBazaar","datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(tigerfetch_nuclei_run_duration_seconds_bucket[$__rate_interval])))",         "legendFormat": "Nuclei",       "datasource": { "type": "prometheus", "uid": "prometheus" } },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(tigerfetch_msf_run_duration_seconds_bucket[$__rate_interval])))",            "legendFormat": "MSF",          "datasource": { "type": "prometheus", "uid": "prometheus" } }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" }
     }
   ]
 }

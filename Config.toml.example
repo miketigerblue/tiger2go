@@ -394,6 +394,87 @@ poll_interval = "24h"
 url           = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
 # ----------------------------------------------------------------------
+# OSV — package-ecosystem CVE / advisory feed (Tier-1 supply-chain)
+# ----------------------------------------------------------------------
+# Per-ecosystem JSON bundles from osv-vulnerabilities.storage.googleapis.com.
+# These are the inputs that join to tiger-watch's SBOM matcher.
+[osv]
+enabled       = true
+poll_interval = "24h"
+# url defaults to https://osv-vulnerabilities.storage.googleapis.com
+ecosystems = [
+  "PyPI",
+  "npm",
+  "Go",
+  "Maven",
+  "RubyGems",
+  "crates.io",
+  "Packagist",
+  "NuGet",
+  "Pub",
+  "Hex",
+  "Hackage",
+]
+
+# ----------------------------------------------------------------------
+# GHSA — GitHub Security Advisory Database (Tier-1 supply-chain)
+# ----------------------------------------------------------------------
+# Anonymous fetch works (60 req/h); set GHSA_TOKEN in env for 5000 req/h.
+# Incremental fetches via the `?modified=>{cursor}` filter — first run
+# pulls everything (~30K advisories), subsequent runs only the deltas.
+[ghsa]
+enabled       = true
+poll_interval = "1h"
+page_size     = 100   # capped at 100 by GitHub API
+# token         = ""  # set GHSA_TOKEN via env instead
+
+# ----------------------------------------------------------------------
+# Nuclei templates (Tier-1 exploit-commodity signal)
+# ----------------------------------------------------------------------
+# Main-branch tarball (~50 MB); stream-decoded in-memory. Daily cadence
+# matches upstream template release pace.
+[nuclei]
+enabled       = true
+poll_interval = "24h"
+# url defaults to https://github.com/projectdiscovery/nuclei-templates/archive/refs/heads/main.tar.gz
+# subdirs defaults to the common CVE-bearing template paths
+
+# ----------------------------------------------------------------------
+# Metasploit Framework module metadata (Tier-1 exploit-commodity signal)
+# ----------------------------------------------------------------------
+# Single ~10 MB JSON cache at db/modules_metadata_base.json. Daily cadence;
+# Rapid7 commits to that file when modules ship.
+[msf]
+enabled       = true
+poll_interval = "24h"
+# url defaults to https://raw.githubusercontent.com/rapid7/metasploit-framework/master/db/modules_metadata_base.json
+
+# ----------------------------------------------------------------------
+# abuse.ch sources — Tier-1 IOC validation
+# ----------------------------------------------------------------------
+# Tier-1 IOC sources. URLhaus (public CSV) needs no key. ThreatFox and
+# MalwareBazaar both require abuse.ch's unified Auth-Key — register one
+# free at https://auth.abuse.ch/ and set ABUSECH_API_KEY in .env. The
+# key is shared across all three sub-feeds.
+[abusech]
+# api_key = ""   # set ABUSECH_API_KEY via env instead — do not commit
+
+[abusech.urlhaus]
+enabled       = true
+poll_interval = "1h"
+# url defaults to https://urlhaus.abuse.ch/downloads/csv_recent/
+
+[abusech.threatfox]
+enabled       = true
+poll_interval = "1h"
+days          = 7   # lookback window (max 7); idempotent upserts handle overlap
+
+[abusech.malwarebazaar]
+enabled       = true
+poll_interval = "1h"
+selector      = "time"   # "time" = last 60 min (auth required); or "100" / "1000" for last N
+
+# ----------------------------------------------------------------------
 # Sleeper CVE Alerting
 # ----------------------------------------------------------------------
 # Detects CVEs that jump from <10% to >=50% EPSS over the lookback

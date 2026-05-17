@@ -1,0 +1,166 @@
+{
+  "uid": "tiger-watch-ops",
+  "title": "tiger-watch Operations",
+  "tags": ["tiger-watch", "provisioned"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Service Health",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Watchlist Entries",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "tigerwatch_watchlist_entries", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "stat",
+      "title": "SBOMs Ingested (total)",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum(tigerwatch_sbom_uploads_total)", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "stat",
+      "title": "SBOM Packages",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "tigerwatch_sbom_packages_total", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+    {
+      "type": "stat",
+      "title": "Match Batches (rate, 5m)",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "rate(tigerwatch_match_batches_total[5m])", "datasource": { "type": "prometheus", "uid": "prometheus" } }]
+    },
+
+    {
+      "type": "row",
+      "title": "Match Engine",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Matches per minute, by watchlist entry",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{
+        "expr": "sum by (watchlist_entry) (rate(tigerwatch_matches_total[5m]))",
+        "legendFormat": "{{watchlist_entry}}",
+        "datasource": { "type": "prometheus", "uid": "prometheus" }
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Matches per minute, by match_type",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{
+        "expr": "sum by (match_type) (rate(tigerwatch_matches_total[5m]))",
+        "legendFormat": "{{match_type}}",
+        "datasource": { "type": "prometheus", "uid": "prometheus" }
+      }]
+    },
+
+    {
+      "type": "row",
+      "title": "Recent Match Persistence (Postgres)",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "table",
+      "title": "Recent watchlist matches",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "options": { "showHeader": true },
+      "targets": [{
+        "rawSql": "SELECT matched_at, watchlist_entry, match_type, matched_value, severity_level, confidence, detail FROM watchlist_matches WHERE matched_at > now() - interval '7 days' ORDER BY matched_at DESC LIMIT 50",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "stat",
+      "title": "Matches by watchlist entry (7d)",
+      "gridPos": { "x": 0, "y": 25, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "rawSql": "SELECT watchlist_entry AS metric, COUNT(*)::float AS value FROM watchlist_matches WHERE matched_at > now() - interval '7 days' GROUP BY watchlist_entry ORDER BY value DESC LIMIT 10",
+        "format": "table"
+      }]
+    },
+    {
+      "type": "stat",
+      "title": "Matches by severity (7d)",
+      "gridPos": { "x": 12, "y": 25, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{
+        "rawSql": "SELECT severity_level AS metric, COUNT(*)::float AS value FROM watchlist_matches WHERE matched_at > now() - interval '7 days' GROUP BY severity_level ORDER BY CASE severity_level WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 ELSE 5 END",
+        "format": "table"
+      }]
+    },
+
+    {
+      "type": "row",
+      "title": "SBOM Pipeline",
+      "gridPos": { "x": 0, "y": 33, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "SBOM uploads, by vendor",
+      "gridPos": { "x": 0, "y": 34, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "fillOpacity": 50 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{
+        "expr": "sum by (vendor) (rate(tigerwatch_sbom_uploads_total[$__rate_interval]))",
+        "legendFormat": "{{vendor}}",
+        "datasource": { "type": "prometheus", "uid": "prometheus" }
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "SBOM hydration cycles",
+      "gridPos": { "x": 12, "y": 34, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 15 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [{
+        "expr": "rate(tigerwatch_sbom_hydrations_total[$__rate_interval])",
+        "legendFormat": "hydrations/sec",
+        "datasource": { "type": "prometheus", "uid": "prometheus" }
+      }]
+    }
+  ]
+}

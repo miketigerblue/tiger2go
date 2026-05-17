@@ -245,6 +245,46 @@ var UrlhausRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 })
 
 // ---------------------------------------------------------------------------
+// abuse.ch — ThreatFox
+// ---------------------------------------------------------------------------
+
+var ThreatFoxFetches = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_threatfox_fetches_total",
+	Help: "ThreatFox API fetch outcomes (success, error).",
+}, []string{"status"})
+
+var ThreatFoxIocsProcessed = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_threatfox_iocs_processed_total",
+	Help: "Total ThreatFox IOC records upserted.",
+})
+
+var ThreatFoxRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_threatfox_run_duration_seconds",
+	Help:    "Duration of a full ThreatFox Run() cycle.",
+	Buckets: []float64{1, 5, 15, 30, 60, 120, 300},
+})
+
+// ---------------------------------------------------------------------------
+// abuse.ch — MalwareBazaar
+// ---------------------------------------------------------------------------
+
+var MalwareBazaarFetches = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_malwarebazaar_fetches_total",
+	Help: "MalwareBazaar API fetch outcomes (success, error).",
+}, []string{"status"})
+
+var MalwareBazaarSamplesProcessed = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_malwarebazaar_samples_processed_total",
+	Help: "Total MalwareBazaar sample records upserted.",
+})
+
+var MalwareBazaarRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "tigerfetch_malwarebazaar_run_duration_seconds",
+	Help:    "Duration of a full MalwareBazaar Run() cycle.",
+	Buckets: []float64{1, 5, 15, 30, 60, 120, 300},
+})
+
+// ---------------------------------------------------------------------------
 // Nuclei templates
 // ---------------------------------------------------------------------------
 
