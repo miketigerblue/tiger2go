@@ -22,8 +22,14 @@ RUN go build -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT}" -o t
 # -----------------------------------------------------------------
 FROM debian:bookworm-slim
 
-# Install CA certs for HTTPS
+# Pull in any base-image security patches at build time before installing
+# what we actually need. Without this, debian:bookworm-slim ships with the
+# package versions baked into the tagged image — which lag behind upstream
+# fixes by however long it's been since the tag was rebuilt. Trivy gates
+# the CI build on HIGH/CRITICAL CVEs in the base image, so a stale base
+# fails CI even when our own code is clean.
 RUN apt-get update \
+    && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
