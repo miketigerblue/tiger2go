@@ -4,11 +4,70 @@
 
 # TigerFetch Data Insights
 
-> **Snapshot Date:** 2026-04-12 | **Database Age:** 39 days | **Source:** Local dev container (`localhost:5432/tiger2go`)
+> Two snapshots below. The **current** snapshot (2026-05-17) is the
+> live lake after the Tier-1 ingestors landed and the May-2026 legacy
+> migration completed. The **2026-04-12 baseline** is preserved below
+> for trend comparison.
 
 ---
 
-## 1. Dataset at a Glance
+## Snapshot — 2026-05-17 (v1.4.0)
+
+> **Source:** Local dev container (`localhost:5432/tiger2go`). All numbers below come from a single point-in-time query; reproducible via `mcp__pg-introspect-tiger2go__run_query` or `psql` against the same DSN.
+
+### 0.1 Lake at a glance
+
+| Domain | Volume | Notes |
+|---|---|---|
+| `cve_enriched` (NVD) | 351,175 CVEs | 95.0 % have EPSS populated post-materialisation |
+| `cve_kev` (active) | 1,590 | First-class table since `[1.3.0]` |
+| `epss_daily` | ~11M rows across 3 monthly partitions | 326k CVEs/day, ~217 new CVEs/day inbound |
+| `ghsa_advisories` | 333,301 | 329,645 carry a `cve_id` link |
+| `osv_vulns` | 264,026 | PyPI alone: 19,564 |
+| `nuclei_templates` | 5,558 | 1,610 critical-severity |
+| `msf_modules` | 6,632 | 1,664 excellent/great-rank (weaponised) |
+| `urlhaus_urls` | 25,784 | 2,155 currently online |
+| `threatfox_iocs` | 3,488 | 7-day rolling window |
+| `malwarebazaar_samples` | 319 | 60-min rolling window |
+| `analysis` (tiger-eye) | 2,595 | 290 enriched in last 7 days |
+| `sbom_packages` (tiger-watch) | 478 | across 18 watchlisted services |
+
+### 0.2 The risk pyramid (current)
+
+EPSS distribution across the 351,177 CVEs in `cve_enriched`:
+
+```
+           /\           8,054 CVEs  ( 2.3%)   Critical  >= 50% exploitation probability
+          /  \
+         /    \        15,854 CVEs  ( 4.5%)   High      10 - 50%
+        /      \
+       /        \      53,083 CVEs  (15.1%)   Medium     1 - 10%
+      /          \
+     /            \   165,909 CVEs  (47.2%)   Low        0.1 - 1%
+    /              \
+   /________________\ 108,277 CVEs  (30.8%)   Negligible < 0.1%
+```
+
+Compared to the April baseline: the critical band has grown from 7,123 → 8,054 (+13.1 %) and overall CVE count from 326k → 351k (+7.7 %). The 2.3 % "critical" share is roughly stable.
+
+### 0.3 Apex predators
+
+CVEs with **EPSS ≥ 90 % AND CVSS ≥ 9.0** — both the model and the static score agree these are severe and actively exploited: **719 entries** as of this snapshot. These are the patching priority-1 list.
+
+### 0.4 What the new sources reveal
+
+The Tier-1 ingestors let analysts answer questions tigerfetch couldn't before:
+
+- **"Is there a Metasploit module?"** — 1,664 weaponised modules (excellent + great rank); join via `msf_modules.cves[]`.
+- **"Is there a Nuclei template?"** — 5,558 templates covering 4,103 distinct CVEs; signals the "scanner commodity" threshold has been crossed.
+- **"Does our SBOM contain any of this?"** — `sbom_packages × osv_vulns × ghsa_advisories` with proper version-range evaluation in tiger-watch.
+- **"What's hot right now?"** — `threatfox_iocs.first_seen > now() - '24 hours'` grouped by `malware_printable` produces the ClearFake/Cobalt Strike/VShell live-campaign ranking that powers the o2 voice agent.
+
+---
+
+## Snapshot — 2026-04-12 (historical baseline, v1.2.0)
+
+### 1. Dataset at a Glance
 
 | Domain | Volume | Coverage |
 |--------|--------|----------|

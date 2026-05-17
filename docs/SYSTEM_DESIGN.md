@@ -4,26 +4,32 @@
 
 # TigerFetch System Design Document
 
-> **Version:** 1.1.1 | **Date:** 2026-03-29 | **Status:** Production
-> **Service:** `tigerfetch` | **Language:** Go 1.26.1 | **Database:** PostgreSQL 16
+> **Version:** 1.4.0 | **Date:** 2026-05-17 | **Status:** Production
+> **Service:** `tigerfetch` | **Language:** Go 1.26.1 | **Database:** PostgreSQL 16 (pgvector-enabled)
 
 ---
 
 ## 1. Overview
 
-TigerFetch is a single-binary cybersecurity OSINT ingestion service that continuously collects threat intelligence from 22 RSS/Atom feeds and 3 structured vulnerability APIs (NVD, CISA KEV, FIRST EPSS), normalises the data, and stores it in PostgreSQL for downstream consumption.
+TigerFetch is a single-binary cybersecurity OSINT ingestion service. It continuously collects threat intelligence from **22 RSS/Atom feeds** and **10 structured sources** (NVD, CISA KEV, FIRST EPSS, OSV, GHSA, URLhaus, ThreatFox, MalwareBazaar, Nuclei templates, Metasploit module metadata), normalises the data, and stores it in PostgreSQL for downstream consumption.
 
-It is designed as an **operational control plane** — not a user-facing API — optimised for reliability, idempotency, and observability at modest scale.
+Two companion services sit on the same lake but are **not** in this binary:
+
+- **tiger-eye** — Python LLM enrichment pipeline. Reads `archive` items, writes structured analysis to `analysis`, computes pgvector embeddings into `analysis_embedding`, canonicalises threat actors and malware families.
+- **tiger-watch** — Python SBOM service. Joins ingested SBOM packages against the OSV/GHSA universe with proper version-range evaluation.
+
+TigerFetch itself is designed as an **operational control plane** — not a user-facing API — optimised for reliability, idempotency, and observability at modest scale. Downstream consumers (tiger-eye, tiger-watch, PostgREST analyst surface, the o2 voice agent) read from the lake; they do not call into TigerFetch.
 
 ### Design Principles
 
 | Principle | Implementation |
 |-----------|---------------|
 | **Single binary, zero runtime deps** | One Go binary with embedded migrations |
-| **Idempotent ingestion** | `ON CONFLICT` clauses + cursor tracking prevent duplicates |
+| **Idempotent ingestion** | `ON CONFLICT` clauses + cursor tracking + `IS DISTINCT FROM` upsert guards prevent duplicates |
 | **Fail-safe isolation** | Each data source runs in its own goroutine; one failure cannot cascade |
-| **Observable by default** | 40+ Prometheus metrics, structured logging, health endpoint |
-| **Secure by construction** | HTML sanitisation, parameterised SQL, non-root container |
+| **Observable by default** | 60+ Prometheus metrics, structured logging, health endpoint, four provisioned Grafana dashboards |
+| **Secure by construction** | HTML sanitisation, parameterised SQL, non-root container, no secrets in image |
+| **Lake-shaped storage** | Everything denormalises to typed columns for hot queries *and* preserves a `raw` jsonb for round-trip fidelity |
 
 ---
 
@@ -32,41 +38,75 @@ It is designed as an **operational control plane** — not a user-facing API —
 ### 2.1 System Context (C1)
 
 ```
-                           +-----------------+
-                           |   TigerFetch    |
-                           |   (tigerfetch)  |
-                           +--------+--------+
-                                    |
-             +----------+-----------+-----------+----------+
-             |          |           |           |          |
-        +----v---+ +----v----+ +---v----+ +----v----+ +---v--------+
-        | 22 RSS | | NVD API | | KEV    | | EPSS   | | PostgreSQL |
-        | Feeds  | | (NIST)  | | (CISA) | | (FIRST)| |    16      |
-        +--------+ +---------+ +--------+ +--------+ +---+--------+
-                                                          |
-                                                    +-----v------+
-                                                    | Prometheus  |
-                                                    | (scrapes    |
-                                                    |  :9101)     |
-                                                    +-------------+
+                                  +-----------------+
+                                  |   TigerFetch    |
+                                  |   (tigerfetch)  |
+                                  +--------+--------+
+                                           |
+   +------------------+----------+---------+----------+--------------+---------+
+   |                  |          |         |          |              |         |
++--v----+ +---v---+ +--v--+ +---v---+ +---v---+ +----v----+ +-------v------+ +v---+
+| 22 RSS| | NVD   | | KEV | | EPSS  | | OSV   | | GHSA    | | abuse.ch x3  | |MSF +|
+| Feeds | | (NIST)| |(CISA| |(FIRST)| |11 eco | |GitHub   | | URLhaus /    | |    |
+|       | |       | |     | |       | |feeds  | |REST API | | ThreatFox /  | |Nucle|
+|       | |       | |     | |       | |       | |         | | MalwareBazaar| |  i  |
++-------+ +-------+ +-----+ +-------+ +-------+ +---------+ +--------------+ +----+
+                                                                          |
+                                                +-------------------------v---+
+                                                |   PostgreSQL 16             |
+                                                |   (pgvector-enabled)        |
+                                                +------+-------+---------+----+
+                                                       |       |         |
+                                            +----------v-+   +-v-----+ +-v---------+
+                                            | Prometheus |   |tiger- | | tiger-eye |
+                                            | :9090      |   |watch  | | (Python   |
+                                            | (scrapes 3 |   |(SBOM) | | enrichment)|
+                                            |  jobs)     |   |       | |           |
+                                            +-----+------+   +-------+ +-----------+
+                                                  |
+                                            +-----v-----+
+                                            | Grafana   |
+                                            | :3000     |
+                                            | (4 dash-  |
+                                            |  boards)  |
+                                            +-----------+
 ```
+
+The three Prometheus scrape jobs are `tigerfetch` (this binary, port 9101),
+`tiger-eye` (Python enrichment service), and `tiger-watch` (SBOM
+service). Grafana auto-loads four dashboards: `tigerfetch-overview`,
+`threat-intelligence`, `tiger-eye`, `tiger-watch`.
 
 ### 2.2 Container View (C2)
 
 ```
-+--tigerfetch binary (single process)--------------------------------------+
-|                                                                          |
-|  main.go (composition root)                                              |
-|  +-----------+  +----------+  +----------+  +----------+  +-----------+ |
-|  | HTTP      |  | Feed     |  | NVD      |  | KEV      |  | EPSS      | |
-|  | Server    |  | Ingestor |  | Runner   |  | Runner   |  | Runner    | |
-|  | :9101     |  | (5 slots)|  | (1h poll)|  | (24h)    |  | (24h)     | |
-|  +-----------+  +----------+  +----------+  +----------+  +-----------+ |
-|        |              |             |             |              |        |
-|  +-----v--------------v-------------v-------------v--------------v-----+ |
-|  |                    pgxpool (max 25 conns)                           | |
-|  +---------------------------------------------------------------------+ |
-+--------------------------------------------------------------------------+
++--tigerfetch binary (single process)----------------------------------------+
+|                                                                            |
+|  main.go (composition root)                                                |
+|                                                                            |
+|  +-----------+  +----------+  +----------+  +----------+  +-----------+   |
+|  | HTTP      |  | Feed     |  | NVD      |  | KEV      |  | EPSS      |   |
+|  | Server    |  | Ingestor |  | Runner   |  | Runner   |  | Runner    |   |
+|  | :9101     |  | (5 slots)|  | (1h poll)|  | (24h)    |  | (24h)     |   |
+|  +-----------+  +----------+  +----------+  +----------+  +-----------+   |
+|                                                                            |
+|  +-----------+  +----------+  +----------+  +----------+  +-----------+   |
+|  | OSV       |  | GHSA     |  | URLhaus  |  | ThreatFox|  | Malware-  |   |
+|  | Runner    |  | Runner   |  | Runner   |  | Runner   |  | Bazaar    |   |
+|  | (24h,     |  | (1h,     |  | (1h)     |  | (1h)     |  | (1h)      |   |
+|  | per-eco)  |  | cursor)  |  |          |  |          |  |           |   |
+|  +-----------+  +----------+  +----------+  +----------+  +-----------+   |
+|                                                                            |
+|  +-----------+  +----------+  +-----------------------------------------+ |
+|  | Nuclei    |  | MSF      |  | Alerting (sleeper-CVE detect + webhook) | |
+|  | Runner    |  | Runner   |  | (configurable cadence; cursor-deduped)  | |
+|  | (24h)     |  | (24h)    |  |                                         | |
+|  +-----------+  +----------+  +-----------------------------------------+ |
+|                                                                            |
+|  +-----------------------------------------------------------------------+ |
+|  |                    pgxpool (max 25 conns)                             | |
+|  +-----------------------------------------------------------------------+ |
++----------------------------------------------------------------------------+
 ```
 
 ### 2.3 Component View (C3)
@@ -80,107 +120,128 @@ internal/
   db/db.go                   pgxpool creation, Goose migrations
   ingestor/ingestor.go       RSS/Atom fetch, parse, sanitise, upsert
   cve/nvd.go                 NVD v2.0 API: paginated fetch, 120-day windows, retry
-  cve/kev.go                 CISA KEV: single-file catalog sync
+  cve/kev.go                 CISA KEV: typed table sync with knownRansomwareUse + cwes[]
   cve/epss.go                FIRST EPSS: paginated CSV, COPY FROM bulk load
-  metrics/metrics.go         40+ Prometheus metric definitions (promauto)
+                             + materialize_epss_to_cve_enriched() callout
+  osv/osv.go                 OSV per-ecosystem ZIP bundles (PyPI/npm/Go/...)
+  ghsa/ghsa.go               GitHub Security Advisory REST API + Link pagination
+  abusech/urlhaus.go         abuse.ch URLhaus CSV feed
+  abusech/threatfox.go       abuse.ch ThreatFox JSON API (Auth-Key)
+  abusech/malwarebazaar.go   abuse.ch MalwareBazaar JSON API (Auth-Key)
+  nuclei/nuclei.go           ProjectDiscovery template tarball stream-walker
+  msf/msf.go                 Rapid7 modules_metadata_base.json cache reader
+  alerting/                  Sleeper-CVE detector + Slack Block Kit / generic webhook
+                             senders, cursor-deduped via ingest_state
+  metrics/metrics.go         60+ Prometheus metric definitions (promauto)
   metrics/middleware.go      HTTP request/duration instrumentation
   metrics/dbcollector.go     Live pgxpool.Stat() collector
 
-migrations/
-  10 SQL files               Goose-managed, embedded at build time
+migrations/                  ~20 SQL files, Goose-managed, embedded at build time
+                             (see Appendix A for the full list)
 ```
 
 ---
 
 ## 3. Data Model
 
-### 3.1 Entity Relationship Diagram
+### 3.1 Lake shape (post-2026-05 migration)
+
+The data lake has three tiers, with TigerFetch writing only the first:
 
 ```
-+------------------+       +------------------+
-|     archive      |       |     current      |
-|------------------|       |------------------|
-| id (UUID) PK     |       | id (UUID) PK     |
-| guid             |       | guid             |    UNIQUE(guid, feed_url)
-| feed_url         |       | feed_url         |    on both tables
-| title            |       | title            |
-| link             |       | link             |
-| published        |       | published        |
-| content          |       | content          |    archive: INSERT only
-| summary          |       | summary          |    current: UPSERT
-| author           |       | author           |
-| categories[]     |       | categories[]     |
-| entry_updated    |       | entry_updated    |
-| feed_title       |       | feed_title       |
-| feed_description |       | feed_description |
-| feed_language    |       | feed_language    |
-| inserted_at      |       | inserted_at      |
-+------------------+       +------------------+
++------------- Tier 1: ingested (tigerfetch writes) ------------------+
+| archive / current             RSS/Atom articles                      |
+| cve_enriched                  NVD CVE detail                         |
+| cve_kev                       CISA KEV (first-class table)           |
+| cve_enriched_history          Append-only change-log on cve_enriched |
+| epss_daily (partitioned)      EPSS daily snapshots                   |
+| osv_vulns                     OSV per-ecosystem advisories           |
+| ghsa_advisories               GitHub Security Advisory Database      |
+| urlhaus_urls                  abuse.ch URLhaus URLs                  |
+| threatfox_iocs                abuse.ch ThreatFox IOCs                |
+| malwarebazaar_samples         abuse.ch MalwareBazaar samples         |
+| nuclei_templates              ProjectDiscovery exploit templates     |
+| msf_modules                   Metasploit module metadata             |
+| ingest_state                  Per-source cursor tracking             |
++---------------------------------------------------------------------+
+              |
+              v
++------------- Tier 2: enriched (tiger-eye writes) -------------------+
+| analysis                      LLM-enriched per-article verdict       |
+| analysis_embedding (vector)   1536-dim pgvector embeddings           |
+| threat_actors / analysis_actor    Canonicalised actor entities      |
+| malware_families / analysis_malware    Canonicalised family entities|
+| pipeline_runs                 Per-enrichment-cycle cost + latency    |
++---------------------------------------------------------------------+
+              |
+              v
++------------- Tier 3: applied (tiger-watch + o2 + analysts) ---------+
+| sbom_documents / sbom_packages    Customer SBOM inventory           |
+| watchlist_matches             SBOM × OSV/GHSA matches               |
+| o2_users / o2_calls / o2_call_turns    Voice-agent state            |
++---------------------------------------------------------------------+
 
-
-+------------------+       +---------------------------+
-|   cve_enriched   |       |       epss_daily          |
-|------------------|       |---------------------------|
-| cve_id      PK   |       | as_of (DATE)   PK         |
-| source      PK   |       | cve_id         PK         |
-| json (JSONB)     |       | epss (NUMERIC)            |
-| cvss_base        |       | percentile (NUMERIC)      |
-| epss             |       | raw (JSONB)               |
-| modified         |       | inserted_at               |
-+------------------+       +---------------------------+
-  Sources:                  PARTITION BY RANGE (as_of)
-  - 'NVD'                   Monthly: epss_daily_y2026m03
-  - 'CISA-KEV'
-
-+------------------+
-|   ingest_state   |
-|------------------|
-| source (TEXT) PK |       Cursor tracking:
-| cursor (TEXT)    |       - NVD: RFC3339 timestamp
-+------------------+       - KEV: catalog version/date
+(legacy.*)  Historical schema restored from the May-2026 fly.io dump.
+            Read-only. Used by the v_*_comparison views to spot-check
+            model drift across the migration.
 ```
 
-### 3.2 Table Semantics
+### 3.2 Tier-1 table semantics (TigerFetch's write surface)
 
-| Table | Write Pattern | Dedup Strategy | Growth Rate |
-|-------|--------------|----------------|-------------|
+| Table | Write pattern | Dedup strategy | Growth |
+|---|---|---|---|
 | `archive` | Append-only | `ON CONFLICT (guid, feed_url) DO NOTHING` | ~700 items/cycle |
-| `current` | Last-write-wins | `ON CONFLICT (guid, feed_url) DO UPDATE` | Bounded by unique items |
-| `cve_enriched` | Upsert | `ON CONFLICT (cve_id, source) DO UPDATE` | ~270k NVD + 1.2k KEV |
-| `epss_daily` | Daily bulk load | Check date exists, skip if present | ~300k rows/day |
-| `ingest_state` | Upsert | `ON CONFLICT (source) DO UPDATE` | 2-3 rows total |
+| `current` | Last-write-wins | `ON CONFLICT (guid, feed_url) DO UPDATE` | bounded by unique items |
+| `cve_enriched` | Upsert | `ON CONFLICT (cve_id, source) DO UPDATE` | ~350k (NVD); KEV moved to `cve_kev` |
+| `cve_kev` | Upsert | `ON CONFLICT (cve_id) DO UPDATE`; `withdrawn_at` flag for catalog removals | ~1.6k active |
+| `cve_enriched_history` | Insert (via trigger on `cve_enriched`) | One row per actual state-change (no no-op UPDATEs) | grows with NVD churn |
+| `epss_daily` | Bulk load via `COPY FROM` | Date-existence check before run | ~300k/day, partitioned monthly |
+| `osv_vulns` | Upsert | `WHERE modified IS DISTINCT FROM EXCLUDED.modified` | ~265k |
+| `ghsa_advisories` | Upsert | `WHERE updated IS DISTINCT FROM EXCLUDED.updated` | ~335k |
+| `urlhaus_urls` | Upsert | row only touched when `url_status`/`last_online` change | ~26k |
+| `threatfox_iocs` | Upsert | `ioc_id` PK; same `IS DISTINCT FROM` guard | ~3.5k 7-day window |
+| `malwarebazaar_samples` | Upsert | `sha256_hash` PK; idem | ~300 60-min window |
+| `nuclei_templates` | Upsert | SHA-256 of YAML body is the change-detection key | ~5.6k |
+| `msf_modules` | Upsert | `fullname` PK; row only touched on `raw IS DISTINCT FROM EXCLUDED.raw` | ~6.6k |
+| `ingest_state` | Upsert | `ON CONFLICT (source) DO UPDATE` | ~10 rows total |
 
 ### 3.3 Indexes
 
-| Table | Index | Purpose |
-|-------|-------|---------|
-| archive | `archive_guid_feed_key (guid, feed_url)` UNIQUE | Deduplication |
-| current | `current_guid_feed_key (guid, feed_url)` UNIQUE | Deduplication |
-| current | `idx_current_feed_url (feed_url)` | Feed filtering |
-| current | `idx_current_published (published)` | Time-range queries |
-| current | `idx_current_content_null` (expression) | Feed QA views |
-| current | `idx_current_summary_null` (expression) | Feed QA views |
-| cve_enriched | `idx_cve_enriched_cvss (cvss_base)` | Severity sorting |
-| cve_enriched | `idx_cve_enriched_epss (epss)` | Risk filtering |
-| cve_enriched | `idx_cve_enriched_mod (modified DESC)` | Delta polling |
-| epss_daily | `idx_epss_daily_cve_id (cve_id)` | CVE lookups |
-| epss_daily | `idx_epss_daily_as_of_epss (as_of, epss DESC)` | Ranked risk queries |
+Each new Tier-1 table follows the same shape:
 
-### 3.4 Views (Feed Quality Analytics)
+- One PK on the natural identifier.
+- A GIN index on every text array used for joins (`cves[]`, `package_names[]`, `aliases[]`, `tags[]`).
+- A `partial btree` on `modified DESC WHERE withdrawn IS NULL` for "latest active" queries.
+- A btree on each FK column.
 
-11 views provide operational visibility into feed content quality:
+Full per-table index inventory in [`docs/SOURCES-TIERED.md`](SOURCES-TIERED.md).
 
-| View | Purpose |
-|------|---------|
-| `v_feed_coverage_summary` | Per-feed completeness stats (total, missing content/summary, %) |
-| `v_missing_both_per_feed` | Feeds ranked by missing content+summary count |
-| `v_missing_both_by_day` | Missing content trends over time |
-| `v_percent_missing_both` | Percentage-based feed health |
-| `v_epss_movers_24h` | CVEs with largest EPSS score changes in 24 hours |
+### 3.4 Views
+
+The lake exposes ~25 views falling into three groups:
+
+| Group | Examples | Purpose |
+|---|---|---|
+| Feed quality | `v_feed_coverage_summary`, `v_missing_both_per_feed`, `v_missing_both_by_day`, `v_percent_missing_both` | Operational visibility into RSS/Atom content gaps |
+| Threat-intel rollups | `v_epss_movers_24h`, `v_top_threat_actors_30d`, `v_top_malware_families_30d`, `v_actor_malware_cooccurrence_90d`, `v_threat_actor_summary`, `v_malware_family_summary` | Analyst-facing rankings |
+| Pipeline observability | `v_pipeline_runs_recent`, `v_pipeline_cost_per_day`, `v_pipeline_by_prompt_version` | Per-run cost + latency for tiger-eye |
+| Migration audit | `v_actor_normalisation_demo`, `v_kev_demotion`, `v_analysis_comparison` | Side-by-side `legacy.*` vs `public.*` to spot-check the May-2026 cutover |
 
 ---
 
 ## 4. Data Sources & Ingestion Pipelines
+
+The 11 ingestors fall into four shape classes:
+
+| Shape | Cursor | Idempotency mechanism | Sources |
+|---|---|---|---|
+| Incremental API w/ time cursor | RFC3339 timestamp in `ingest_state` | `ON CONFLICT … WHERE … IS DISTINCT FROM …` | NVD, GHSA |
+| Single-file catalogue | Catalogue version/date in `ingest_state` | Skip run if cursor unchanged | CISA KEV, MSF (Rapid7 JSON cache), Nuclei (tarball) |
+| Per-window pull | "first_seen >= now() - N" implicit | PK conflict + row-changed guard | URLhaus, ThreatFox, MalwareBazaar |
+| Bulk daily snapshot | Date in partition table | Skip if date already present | EPSS |
+| Per-ecosystem bundle | none (re-fetch each cycle) | `WHERE modified IS DISTINCT FROM …` | OSV (per-ecosystem ZIPs) |
+
+Per-pipeline detail below.
 
 ### 4.1 RSS/Atom Feed Pipeline
 
@@ -264,6 +325,108 @@ FOR VALUES FROM ('2026-03-01') TO ('2026-04-01')
 
 **Polling:** Default 24 hours. Skips entirely if today's date already exists.
 
+**Materialisation back to `cve_enriched`:** Migration `20260516_materialize_epss_to_cve_enriched.sql` introduced a PL/pgSQL function `materialize_epss_to_cve_enriched()` that pulls the latest score per CVE from the `epss_daily` partitions and writes it to `cve_enriched.epss`. Idempotent (only updates rows whose score actually changed). Coverage went from 0 % → 95 % on first run.
+
+### 4.5 OSV Pipeline (per-ecosystem bundles)
+
+```
+  osv-vulnerabilities.storage.googleapis.com    OsvRunner            PostgreSQL
+  -------------------------------------------    ---------            ----------
+  <eco>/all.zip   (PyPI, npm, Go, Maven, ...)  --> unzip in-memory --> osv_vulns
+                  one ZIP per ecosystem             walk each .json      (upsert,
+                  Default: 11 ecosystems            extract aliases,     IS DISTINCT
+                                                    affected ranges      FROM guard)
+```
+
+**Idempotency:** `WHERE modified IS DISTINCT FROM EXCLUDED.modified` means re-fetch with no upstream changes touches 0 rows. Each ecosystem cursors independently.
+
+**Range filtering:** The denormalised `affected` column carries the package identity only; the original `raw.affected` jsonb has the `ranges` + `versions` arrays needed for proper version-range evaluation (done in tiger-watch's Python comparator, not here).
+
+**Known limitation:** `cvss_v3` is NULL for advisories that publish only the CVSS vector (most GHSA-sourced PyPI entries). Adding a CVSS-vector evaluator is a follow-up.
+
+### 4.6 GHSA Pipeline (incremental w/ Link pagination)
+
+```
+  api.github.com/advisories         GhsaRunner            PostgreSQL
+  ---------------------------       ----------            ----------
+  ?modified=>{cursor}         --->  Follow Link:rel=next  --> ghsa_advisories
+  Anonymous: 60 req/h               Persist cursor on        (upsert, withdrawn
+  With token: 5,000 req/h           every page so a          flag preserved)
+                                    rate-limit mid-stream
+                                    doesn't replay
+```
+
+**Cursor:** ISO-8601 `modified` of the last advisory in the last successful page. Stored as `ingest_state(source='GHSA')`.
+
+**Auth:** `cfg.GHSA.Token` (env `GHSA_TOKEN`) — required for the initial ~30K-advisory backfill; optional thereafter.
+
+### 4.7 abuse.ch Pipeline (URLhaus / ThreatFox / MalwareBazaar)
+
+```
+  urlhaus.abuse.ch/downloads/csv_recent/        UrlhausRunner       urlhaus_urls
+  threatfox-api.abuse.ch/api/v1/                ThreatfoxRunner --> threatfox_iocs
+  mb-api.abuse.ch/api/v1/                       MalwarebazaarRunner malwarebazaar_samples
+
+  All three share a single ABUSECH_API_KEY (Auth-Key header). URLhaus
+  switched from key-less to authenticated alongside the other two in 2024.
+```
+
+**Idempotency:** PK on `id` / `ioc_id` / `sha256_hash` respectively, with the `row only updated when something meaningful changed` guard (`url_status`/`last_online` for URLhaus; full row for the other two via `IS DISTINCT FROM`).
+
+**Polling:** All three at 1h cadence. ThreatFox requests `query=get_iocs days=7`; MalwareBazaar `selector=time` (60-min window). URLhaus pulls the recent-CSV file each cycle.
+
+**Failure mode:** Each runner short-circuits cleanly when `ABUSECH_API_KEY` is unset, so the rest of the binary still works in environments without the secret.
+
+### 4.8 Nuclei Pipeline (tarball stream-walker)
+
+```
+  github.com/projectdiscovery/nuclei-templates  NucleiRunner
+  ------------------------------------------    ------------
+  /archive/refs/heads/main.tar.gz       --->    Stream-walk the tar  --> nuclei_templates
+                                                in-memory; parse every    (idempotent on
+                                                YAML under configured     yaml_sha256)
+                                                subdirs (http/cves,
+                                                http/vulnerabilities,
+                                                network/cves, ...)
+```
+
+**CVE extraction:** Collects refs from three sources — `classification.cve-id`, `tags`, template `id`. Deduped uppercase.
+
+**Quirks handled:** YAML fields can be scalar *or* sequence (`author`, `tags`, `cve-id`, `cwe-id`); literal `0x00` bytes in payload examples are stripped before insert.
+
+### 4.9 MSF Pipeline (Rapid7 JSON cache)
+
+```
+  raw.githubusercontent.com/rapid7/metasploit-framework/master/db/modules_metadata_base.json
+  ----------------------------------------------------------------------------------------
+  Single ~10 MB JSON file              MsfRunner             msf_modules
+  with every module's metadata  --->   Parse + extract  -->  (upsert, raw IS
+  already structured                   CVE refs from         DISTINCT FROM guard)
+                                       refs[] (skip
+                                       OSVDB / URL / EDB)
+```
+
+**Why this and not the Ruby ecosystem:** Rapid7 publishes the cache for exactly this consumption pattern. No Ruby toolchain needed.
+
+**Rank label:** Mapped from the numeric `rank` field — `manual / low / average / normal / good / great / excellent`. `excellent + great` is the conventional "weaponised" threshold (~1,664 modules currently).
+
+### 4.10 Sleeper-CVE Alerting
+
+```
+  cve_enriched + epss_daily    Alerter              Slack Block Kit / Generic JSON
+  -------------------------    -------              -------------------------------
+  Look up each CVE's      -->  Detect: was <X%      -->  Webhook POST
+  EPSS at (now - lookback)     in past, >=Y% now;        (cursor-deduped via
+  and at (now)                 emit notification         ingest_state to prevent
+                               with NVD link,            duplicate alerts)
+                               coloured CVSS badge,
+                               CWE, truncated desc
+```
+
+**Default thresholds:** baseline < 10 %, current ≥ 50 %. Configurable.
+
+**Block-Kit cap:** 10 CVEs per Slack message (Slack block limit) — overflow noted in trailer.
+
 ---
 
 ## 5. Concurrency Model
@@ -340,14 +503,14 @@ SIGTERM received
 database_url    = "postgres://user:pass@host:5432/tiger2go?sslmode=disable"
 
 # Optional (with defaults)
-ingest_interval = "1h"             # Feed polling frequency
-server_bind     = "0.0.0.0:9101"   # HTTP server bind address
+ingest_interval = "1h"
+server_bind     = "0.0.0.0:9101"
 
 [nvd]
 enabled         = true
 poll_interval   = "1h"
-page_size       = 2000             # Results per API page
-api_key         = ""               # Optional; enables 50 req/30s (vs 5)
+page_size       = 2000
+api_key         = ""               # NVD_API_KEY env override; 5 → 50 req/30s
 
 [kev]
 enabled         = true
@@ -357,8 +520,52 @@ url             = "https://www.cisa.gov/sites/default/files/feeds/known_exploite
 [epss]
 enabled         = true
 poll_interval   = "24h"
-url             = "https://api.first.org/data/v1/epss"
 page_size       = 5000
+
+[osv]
+enabled         = true
+poll_interval   = "24h"
+ecosystems      = ["PyPI", "npm", "Go", "Maven", "RubyGems",
+                   "crates.io", "Packagist", "NuGet", "Pub",
+                   "Hex", "Hackage"]
+
+[ghsa]
+enabled         = true
+poll_interval   = "1h"
+token           = ""               # GHSA_TOKEN env override
+
+[urlhaus]
+enabled         = true
+poll_interval   = "1h"
+# auth_key picked up from ABUSECH_API_KEY
+
+[threatfox]
+enabled         = true
+poll_interval   = "1h"
+# auth_key picked up from ABUSECH_API_KEY
+
+[malwarebazaar]
+enabled         = true
+poll_interval   = "1h"
+# auth_key picked up from ABUSECH_API_KEY
+
+[nuclei]
+enabled         = true
+poll_interval   = "24h"
+template_subdirs = ["http/cves/", "http/vulnerabilities/",
+                    "dns/", "network/cves/", "file/",
+                    "javascript/cves/", "ssl/"]
+
+[msf]
+enabled         = true
+poll_interval   = "24h"
+
+[alerting]
+enabled         = true
+[[alerting.webhooks]]
+name            = "soc"
+type            = "slack"
+url             = "https://hooks.slack.com/services/..."
 
 [[feeds]]
 name            = "CISA Cybersecurity Alerts"
@@ -369,11 +576,13 @@ tags            = ["government", "alerts"]
 
 ### 6.3 Environment Variables
 
-| Variable | Maps To | Required |
-|----------|---------|----------|
+| Variable | Maps to | Required |
+|---|---|---|
 | `DATABASE_URL` | `database_url` | Yes |
-| `LOG_LEVEL` | slog level (DEBUG/INFO/WARN/ERROR) | No (default: INFO) |
-| `NVD_API_KEY` | `nvd.api_key` | No |
+| `LOG_LEVEL` | slog level | No (default: INFO) |
+| `NVD_API_KEY` | `nvd.api_key` | No (10× rate limit if set) |
+| `GHSA_TOKEN` | `ghsa.token` | No (60 → 5,000 req/h if set) |
+| `ABUSECH_API_KEY` | `urlhaus.auth_key`, `threatfox.auth_key`, `malwarebazaar.auth_key` | Required to enable the abuse.ch trio |
 | `SERVER_BIND` | `server_bind` | No |
 | `INGEST_INTERVAL` | `ingest_interval` | No |
 
@@ -383,7 +592,7 @@ tags            = ["government", "alerts"]
 
 ### 7.1 Metrics (Prometheus)
 
-**38 metrics exposed at `GET /metrics` with prefix `tigerfetch_`.**
+**60+ metrics exposed at `GET /metrics` with prefix `tigerfetch_`.** New ingestors follow the same `{ingestor}_fetches_total{status}` + `{ingestor}_records_processed_total` + `{ingestor}_run_duration_seconds` triplet, listed below.
 
 #### Feed Ingestion Metrics
 
@@ -419,6 +628,21 @@ tags            = ["government", "alerts"]
 | `epss_pages_fetched_total` | Counter | — | API pages retrieved |
 | `epss_run_duration_seconds` | Histogram | — | Full run wall time |
 | `epss_cursor_lag_seconds` | Gauge | — | Seconds behind latest date |
+
+#### Tier-1 source metrics (new in v1.4.0)
+
+Every new ingestor follows the same triplet — fetches counter with status label, records-processed counter, and run-duration histogram.
+
+| Source | Metrics |
+|---|---|
+| OSV | `osv_fetches_total{ecosystem,status}`, `osv_vulns_processed_total{ecosystem}`, `osv_run_duration_seconds` |
+| GHSA | `ghsa_fetches_total{status}`, `ghsa_advisories_processed_total`, `ghsa_pages_fetched_total`, `ghsa_run_duration_seconds`, `ghsa_rate_limit_remaining` |
+| URLhaus | `urlhaus_fetches_total{status}`, `urlhaus_rows_processed_total`, `urlhaus_run_duration_seconds` |
+| ThreatFox | `threatfox_fetches_total{status}`, `threatfox_iocs_processed_total`, `threatfox_run_duration_seconds` |
+| MalwareBazaar | `malwarebazaar_fetches_total{status}`, `malwarebazaar_samples_processed_total`, `malwarebazaar_run_duration_seconds` |
+| Nuclei | `nuclei_fetches_total{status}`, `nuclei_templates_processed_total`, `nuclei_run_duration_seconds` |
+| MSF | `msf_fetches_total{status}`, `msf_modules_processed_total`, `msf_run_duration_seconds` |
+| Alerting | `alerting_runs_total{status}`, `sleeper_cves_detected_total`, `webhooks_sent_total{webhook,outcome}`, `alerting_run_duration_seconds` |
 
 #### Infrastructure Metrics
 
@@ -493,48 +717,66 @@ Configurable via `LOG_LEVEL` environment variable: `DEBUG`, `INFO`, `WARN`, `ERR
 
 ### 7.6 Grafana Dashboards
 
-Two provisioned dashboards are auto-loaded via `grafana/dashboards/` and require zero manual setup.
+Four provisioned dashboards auto-load via `grafana/dashboards/` and require zero manual setup.
 
-#### TigerFetch Operations (`tigerfetch-ops`)
+#### `tigerfetch-overview` (Prometheus)
 
-Operational dashboard sourced from Prometheus. 7 rows, ~30 panels:
+Operational dashboard for the tigerfetch binary itself.
 
-| Row | Panels | Purpose |
-|-----|--------|---------|
-| System Overview | Uptime, Go version, goroutines, memory, GC pause | Process health at a glance |
-| Feed Ingestion | Success rate, items/min, empty content ratio, freshness, per-feed breakdown | Feed pipeline health |
-| NVD Enrichment | Fetch rate, CVEs processed, cursor lag, batch size, run duration | NVD catch-up progress |
-| EPSS & KEV | EPSS records, run outcomes, KEV vuln count, cursor lag | Enrichment pipeline status |
-| Upstream HTTP | Latency heatmap, P50/P99 by source, error rate | External API performance |
-| DB Pool | Utilisation gauge, connection breakdown, acquire latency, exhaustion events | Database pressure |
-| Runtime | Goroutine count, heap usage, GC frequency | Go runtime internals |
+| Row | Purpose |
+|---|---|
+| System Overview | Uptime, Go version, goroutines, memory, GC pause |
+| Feed Ingestion | Success rate, items/min, empty content ratio, freshness, per-feed breakdown |
+| NVD Enrichment | Fetch rate, CVEs processed, cursor lag, batch size, run duration |
+| EPSS & KEV | EPSS records, run outcomes, KEV vuln count, cursor lag |
+| **Tier-1 Threat-Intel Sources** | OSV / GHSA / URLhaus / ThreatFox / MalwareBazaar / Nuclei / MSF — records processed, success/error rate, p95 run duration |
+| Sleeper-CVE Alerting | Runs, detected CVEs, webhook outcomes |
+| Upstream HTTP | Latency heatmap, P50/P99 by source, error rate |
+| DB Pool | Utilisation gauge, connection breakdown, acquire latency, exhaustion events |
+| Runtime | Goroutine count, heap usage, GC frequency |
 
-Template variables: `$feed` (feed name filter), `$source` (upstream source filter).
+#### `threat-intelligence` (PostgreSQL)
 
-#### Threat Intelligence (`tigerfetch-intel`)
+Analytical dashboard sourced from the lake.
 
-Analytical dashboard sourced from PostgreSQL. 5 rows, ~20 panels:
+| Row | Purpose |
+|---|---|
+| Threat Landscape Overview | Total CVEs, KEV entries, critical CVEs, EPSS records, high-risk count, feed items (7d) |
+| EPSS — Exploit Prediction | Top 25 most exploitable CVEs, biggest 24h movers, score distribution, daily record trend |
+| Danger Zone — CVSS × EPSS | Combined: CVEs with high severity AND high exploit probability, risk score, KEV flag |
+| NVD — Vulnerability Landscape | CVSS distribution, CVEs by severity over time, latest critical CVEs |
+| Tier-1 Source Volume | OSV / GHSA / URLhaus / ThreatFox / MalwareBazaar / Nuclei / MSF row counts + growth |
+| SBOM Coverage | (tiger-watch lake) advisories per service, advisories ranked by severity |
+| Feed Intelligence | Feed volume timeline, content coverage by feed, latest 50 feed items with links |
 
-| Row | Panels | Purpose |
-|-----|--------|---------|
-| Threat Landscape Overview | Total CVEs, KEV entries, critical CVEs, EPSS records, high-risk count, feed items (7d) | Key numbers at a glance |
-| EPSS — Exploit Prediction | Top 25 most exploitable CVEs, biggest 24h movers, score distribution, daily record trend | Exploitation probability analysis |
-| Danger Zone — CVSS x EPSS | Combined table: CVEs with high severity AND high exploit probability, risk score, KEV flag | Priority-1 patching candidates |
-| NVD — Vulnerability Landscape | CVSS distribution, CVEs by severity over time, latest critical CVEs, CISA KEV catalog | Vulnerability landscape overview |
-| Feed Intelligence | Feed volume timeline, content coverage by feed, latest 50 feed items with links | RSS/Atom feed health and content |
+Risk-score formula: `ROUND((cvss_base * epss * 10) / 10, 2)` — 0–10 scale combining severity with exploitation likelihood.
 
-Template variables: `$epss_threshold`, `$cvss_threshold`, `$feed_source`.
+#### `tiger-eye` (Prometheus + PostgreSQL)
 
-Risk score formula: `ROUND((cvss_base * epss * 10) / 10, 2)` — produces a 0–10 scale combining severity with exploitation likelihood.
+Companion dashboard for the Python enrichment pipeline. Analysis volume, DLQ depth (retryable + exhausted), model cost per day, per-prompt-version cost, p95 LLM latency, embedding coverage.
 
-#### Datasource Configuration
+#### `tiger-watch` (Prometheus + PostgreSQL)
+
+Companion dashboard for the SBOM matching service. SBOM packages, advisories per service, version-range eval throughput, the "would have been a false positive without range filter" delta.
+
+#### Datasource configuration
 
 Both datasources are provisioned via `grafana/provisioning/datasources/datasource.yml`:
 
 | Datasource | Type | UID | Target | Default |
-|------------|------|-----|--------|---------|
+|---|---|---|---|---|
 | Prometheus | `prometheus` | `prometheus` | `http://prometheus:9090` | Yes |
 | PostgreSQL | `postgres` | `pg` | `db:5432` | No |
+
+#### Prometheus scrape jobs
+
+Three jobs are configured (`prometheus.yml`):
+
+| Job | Target | Notes |
+|---|---|---|
+| `tigerfetch` | `tigerfetch:9101` | This binary |
+| `tiger-eye` | `tiger-eye:8080` | Python enrichment |
+| `tiger-watch` | `tiger-watch:8081` | Python SBOM service |
 
 ---
 
@@ -725,17 +967,20 @@ Disabled due to upstream issues (404s, certificate mismatches, rate limiting, no
 
 ## 13. Dependencies
 
-### 13.1 Direct Dependencies (7)
+### 13.1 Direct Dependencies
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `jackc/pgx/v5` | 5.8.0 | PostgreSQL driver with connection pooling |
-| `microcosm-cc/bluemonday` | 1.0.27 | HTML sanitisation (XSS prevention) |
-| `mmcdole/gofeed` | 1.3.0 | RSS/Atom feed parsing |
-| `pressly/goose/v3` | 3.26.0 | Database migration management |
-| `prometheus/client_golang` | 1.23.2 | Prometheus metrics instrumentation |
-| `spf13/viper` | 1.21.0 | Configuration management (TOML + env) |
-| `stretchr/testify` | 1.11.1 | Test assertions and requirements |
+| Package | Purpose |
+|---|---|
+| `jackc/pgx/v5` | PostgreSQL driver with connection pooling |
+| `microcosm-cc/bluemonday` | HTML sanitisation (XSS prevention) |
+| `mmcdole/gofeed` | RSS/Atom feed parsing |
+| `pressly/goose/v3` | Database migration management |
+| `prometheus/client_golang` | Prometheus metrics instrumentation |
+| `spf13/viper` | Configuration management (TOML + env) |
+| `gopkg.in/yaml.v3` | Nuclei template parsing |
+| `stretchr/testify` | Test assertions |
+
+Exact pinned versions live in `go.mod`.
 
 ### 13.2 Go Toolchain
 
@@ -783,13 +1028,20 @@ go 1.26.0, toolchain go1.26.1
 ### 15.1 Current Throughput
 
 | Dimension | Value |
-|-----------|-------|
+|---|---|
 | RSS/Atom feeds | 22 sources, ~700 items per cycle |
-| NVD CVEs | ~270,000 total (120-day sliding window) |
-| KEV vulnerabilities | ~1,200 total (single catalog) |
-| EPSS records | ~300,000 per daily snapshot |
-| DB connections | Max 25 (typical: 4-6 active) |
-| Prometheus series | ~500 time series |
+| NVD CVEs | ~351k (120-day sliding window of `cve_enriched`) |
+| CISA KEV | ~1,590 active in `cve_kev` |
+| EPSS records | ~300k per daily snapshot; ~11M across `epss_daily_y2026m*` partitions |
+| OSV advisories | ~264k across 11 ecosystems |
+| GHSA advisories | ~333k |
+| URLhaus URLs | ~25k (2.1k currently online) |
+| ThreatFox IOCs | ~3.5k (7-day rolling window) |
+| MalwareBazaar samples | ~300 (60-min rolling window) |
+| Nuclei templates | ~5.6k (1.6k critical-severity) |
+| MSF modules | ~6.6k (1.6k excellent/great rank) |
+| DB connections | Max 25 (typical: 8-12 active with 11 ingestors) |
+| Prometheus series | ~800 time series |
 
 ### 15.2 Scaling Boundaries
 
@@ -815,7 +1067,7 @@ TigerFetch is intentionally single-instance:
 ## Appendix A: Migration History
 
 | # | File | Change |
-|---|------|--------|
+|---|---|---|
 | 1 | `20250425_create_tables.sql` | Create archive + current tables |
 | 2 | `20250525_add_uuid_and_unique_guid.sql` | Add UUID primary key, unique guid index |
 | 3 | `20250526_create_views_for_feed_qa.sql` | 10 QA views + expression indexes |
@@ -826,6 +1078,19 @@ TigerFetch is intentionally single-instance:
 | 8 | `20250913_fix_checksums.sql` | No-op (checksum reconciliation) |
 | 9 | `20251214_create_epss_daily.sql` | Partitioned EPSS table + movers view |
 | 10 | `20260329_fix_archive_current_cardinality.sql` | Composite unique key (guid, feed_url) |
+| 11 | `20260412_drop_epss_daily_raw.sql` | Drop redundant `raw` column (~23% size reclaim per partition) |
+| 12 | `20260511_create_cve_kev.sql` | KEV as a first-class typed table (replaces `source='CISA-KEV'` anti-pattern) |
+| 13 | `20260512_create_cve_enriched_history.sql` | Append-only change-log + trigger |
+| 14 | `20260513_archive_notify_trigger.sql` | `pg_notify('article_ingested', guid)` for tiger-eye LISTEN |
+| 15 | `20260516120000_comparison_views_legacy_vs_public.sql` | `legacy.*` vs `public.*` audit views (actor normalisation, KEV demotion, analysis comparison) |
+| 16 | `20260516130000_create_osv_vulns.sql` | OSV advisories table + per-ecosystem indexes |
+| 17 | `20260516140000_create_ghsa_advisories.sql` | GitHub Security Advisory table |
+| 18 | `20260516150000_create_urlhaus_urls.sql` | URLhaus URLs table |
+| 19 | `20260516160000_create_nuclei_templates.sql` | Nuclei templates table |
+| 20 | `20260516170000_create_msf_modules.sql` | Metasploit modules table |
+| 21 | `20260516180000_create_threatfox_iocs.sql` | ThreatFox IOCs table |
+| 22 | `20260516190000_create_malwarebazaar_samples.sql` | MalwareBazaar samples table |
+| 23 | `20260516_materialize_epss_to_cve_enriched.sql` | `materialize_epss_to_cve_enriched()` function + first-run fill |
 
 ## Appendix B: Makefile Targets
 

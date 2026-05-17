@@ -8,6 +8,25 @@
 **Service:** PostgREST over PostgreSQL  
 **Purpose:** document every exposed endpoint derived from the DB `api` schema, with security implications, triage usage, and practical request examples.
 
+> **v1.4.0 update — what changed since the original guide was
+> written:** the Tier-1 ingestors landed seven new tables in the
+> `public` schema (`osv_vulns`, `ghsa_advisories`, `urlhaus_urls`,
+> `threatfox_iocs`, `malwarebazaar_samples`, `nuclei_templates`,
+> `msf_modules`) plus `cve_kev` (CISA KEV as a first-class table) and
+> `cve_enriched_history` (append-only change log). These are **not
+> currently re-projected into the `api` schema** — direct access is
+> SQL-only for now. The PostgREST endpoint catalogue below reflects
+> what's exposed as of the v1.2.x analyst surface and remains accurate
+> for those views. A follow-up will decide which Tier-1 tables to
+> surface via PostgREST (read-only) vs keep SQL-only.
+>
+> **Deployment note:** the PostgREST service itself now deploys from
+> [`tigerblue-deployment`](https://github.com/miketigerblue/tigerblue-deployment)
+> (which owns the `mint_postgrest_token.py` + 1Password flow + JWKS
+> publishing). The `postgrest/` directory in this repo retains the
+> Docker / Fly artefacts but is no longer the canonical deployment
+> source; see `postgrest/README.md` for the pointer.
+
 ---
 
 ## Executive summary (meeting-ready)

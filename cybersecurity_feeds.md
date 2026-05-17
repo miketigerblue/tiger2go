@@ -1,5 +1,15 @@
 # TigerBlue OSINT Dashboard – **Licence-Compliant Feed List**
 
+> **Scope:** This document covers **RSS/Atom feed** licensing — the
+> `[[feeds]]` blocks in `Config.toml`. The Tier-1 *structured* sources
+> shipped in v1.4.0 (NVD, KEV, EPSS, OSV, GHSA, URLhaus, ThreatFox,
+> MalwareBazaar, Nuclei templates, Metasploit modules) have their own
+> upstream licence terms — NVD/KEV/EPSS are US-Gov public-domain;
+> OSV/GHSA/Nuclei/MSF are CC0/Apache/BSD-permissive; abuse.ch
+> (URLhaus/ThreatFox/MalwareBazaar) is free-to-use with attribution
+> and an `ABUSECH_API_KEY`. Verify each source's terms before any
+> public redistribution.
+
 Every feed below is either U.S.-government public-domain, released under the UK Open Government Licence (OGL v3.0) or published under a permissive Creative Commons licence.  That means you can legally display _headline + short AI summary + link-back_ in a public dashboard with only minimal attribution.
 
 > **Important:** If you enable any additional feeds you _must_ verify the licence terms yourself before deploying them to a public instance.

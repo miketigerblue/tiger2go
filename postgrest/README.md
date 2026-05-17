@@ -1,151 +1,38 @@
-# 🐘 PostgREST Service for Tigerfetch
+# PostgREST — analyst surface over the tiger2go lake
 
-This directory contains the configuration and deployment setup for the **PostgREST** service used by the **Tigerfetch** platform.  
-PostgREST provides a secure, RESTful API interface directly over the PostgreSQL database, enabling read-only or role-based access to enriched data.
+> **This directory is retained for historical reference.**
+> Canonical PostgREST deployment artefacts (Dockerfile, Fly config,
+> JWKS publishing, JWT mint flow) now live in
+> [`tigerblue-deployment`](https://github.com/miketigerblue/tigerblue-deployment).
 
----
+## What's still here
 
-## 📁 Directory Structure
+| File | Purpose |
+|---|---|
+| `Dockerfile` | Legacy image build. Frozen — does **not** match the production image. |
+| `postgrest.conf` | Legacy config. Reference value only; the live config is sourced from Fly secrets. |
+| `fly.toml` | Legacy Fly app definition. The production app `tigerblue-postgrest` deploys from `tigerblue-deployment`, not from here. |
 
-```
-postgrest/
-├── Dockerfile          # Container definition for PostgREST
-├── postgrest.conf      # Main configuration file
-├── fly.toml            # Fly.io deployment configuration
-└── README.md           # This documentation
-```
+## Where to go for the live deployment
 
----
+- **Service URL:** `https://tigerblue-postgrest.fly.dev`
+- **Schema exposed:** `api` (`PGRST_DB_SCHEMA=api`)
+- **Auth:** RS256 JWT against the JWKS at
+  `https://miketigerblue.github.io/malware-fingerprints/.well-known/jwks.json`
+- **Token mint flow:** `tigerblue-deployment/mint_postgrest_token.py`
+  reading the signing key from
+  `op://tigerblue/postgrest-signing-2026q2/private`. See
+  `tigerblue-deployment/postgrest-jwt-setup.md` for the end-to-end flow.
+- **Endpoint catalogue:** [`docs/API_ENDPOINTS_SECURITY_TRIAGE_GUIDE.md`](../docs/API_ENDPOINTS_SECURITY_TRIAGE_GUIDE.md)
 
-## ⚙️ Configuration Overview
+## Why the split
 
-### `postgrest.conf`
-This file defines how PostgREST connects to the database and exposes schemas.
+PostgREST is the *analyst surface* over the lake; tigerfetch is the
+*ingestion service* that fills the lake. Keeping deployment artefacts
+for the analyst surface alongside the lake-owning repo created two
+sources of truth (this directory and the `tigerblue-deployment`
+working copy) that drifted. Consolidating to one source.
 
-Example:
-```ini
-db-uri = "$(PGRST_DB_URI)"
-db-schemas = "public"
-db-anon-role = "web_anon"
-server-port = 3000
-```
-
-**Key parameters:**
-- `db-uri`: Connection string to the PostgreSQL database.  
-  - In production, this is injected via Fly.io secrets.
-  - Example:  
-    `postgres://user:password@tigerblue-db.internal:5432/tigerfetch`
-- `db-schemas`: The schema(s) PostgREST exposes as REST endpoints.
-- `db-anon-role`: The role used for unauthenticated requests.
-- `server-port`: The internal port PostgREST listens on (default: `3000`).
-
----
-
-## 🐳 Docker Setup
-
-### Dockerfile
-```Dockerfile
-FROM postgrest/postgrest:latest
-COPY postgrest.conf /etc/postgrest.conf
-CMD ["postgrest", "/etc/postgrest.conf"]
-```
-
-This builds a lightweight container that runs PostgREST with your configuration baked in.
-
-### Local Development
-To run locally using Docker Compose:
-```bash
-docker compose up -d postgrest
-```
-
-Ensure your `db-uri` in `postgrest.conf` points to your local or legacy database, e.g.:
-```
-db-uri = "postgres://user:password@host.docker.internal:5432/osint"
-```
-
----
-
-## ☁️ Fly.io Deployment
-
-### 1. Create a Fly App
-```bash
-fly launch --name tigerfetch-postgrest --no-deploy
-```
-
-### 2. Set Secrets
-```bash
-fly secrets set PGRST_DB_URI="postgres://user:password@tigerblue-db.internal:5432/tigerfetch"
-```
-
-### 3. Deploy
-```bash
-fly deploy --config fly.toml --dockerfile Dockerfile
-```
-
-### 4. Verify
-```bash
-fly logs
-curl https://tigerfetch-postgrest.fly.dev/
-```
-
----
-
-## 🔒 Security
-
-- **TLS only:** The Fly.io configuration enforces HTTPS (port 443) for all external traffic.
-- **Internal DB access:** PostgREST connects to the managed PostgreSQL instance via Fly’s internal network (`.internal` domain).
-- **Secrets management:** Database credentials are stored securely using Fly secrets, overriding any values in `fly.toml`.
-
----
-
-## 🧠 Tips
-
-- To inspect the active environment variables:
-  ```bash
-  fly ssh console -C 'printenv | grep PGRST'
-  ```
-- To redeploy after config changes:
-  ```bash
-  fly deploy
-  ```
-- To scale PostgREST:
-  ```bash
-  fly scale count 2
-  ```
-
----
-
-## 🧩 Integration Notes
-
-- The PostgREST service complements the main **Tigerfetch API** by providing direct, schema-driven access to the database.
-- It’s ideal for:
-  - Internal dashboards
-  - Data analysis tools
-  - Read-only API consumers
-
----
-
-## 🔐 Restricting Access to Internal Fly Apps Only
-
-To make PostgREST accessible only to other Fly.io apps (and not the public internet):
-
-1. Remove the public ports from `fly.toml`:
-   ```toml
-   [[services]]
-     internal_port = 3000
-     protocol = "tcp"
-   ```
-
-2. Use Fly’s **private networking** to connect from your other Fly apps:
-   ```bash
-   curl http://tigerfetch-postgrest.internal:3000/
-   ```
-
-This ensures PostgREST is only reachable within your Fly.io organization’s internal network.
-
----
-
-## 🧾 License
-
-This configuration and documentation are part of the **Tigerfetch** project.  
-Licensed under the Apache License 2.0.
+The `api` schema definitions themselves stay in tigerfetch's
+`migrations/` (they're part of the data model); only the PostgREST
+*service* deployment moved.

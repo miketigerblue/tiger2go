@@ -9,7 +9,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.4.0] - 2026-05-17
+
+This release closes out the **Tier-1 intel-source set** end-to-end. Beyond the
+seven new ingestors it lands the abuse.ch trio (URLhaus / ThreatFox /
+MalwareBazaar) sharing a single `ABUSECH_API_KEY`, the Grafana dashboard set
+(four dashboards), and the `Config.toml.example` gap that was silently leaving
+OSV / GHSA / MSF / Nuclei disabled on fresh deploys.
+
 ### Added
+
+#### ThreatFox + MalwareBazaar ingest (Tier-1 abuse.ch) — `internal/abusech/`, migrations `20260516180000_create_threatfox_iocs.sql`, `20260516190000_create_malwarebazaar_samples.sql`
+- New `ThreatfoxRunner` polls `POST threatfox-api.abuse.ch/api/v1/`
+  with `query=get_iocs`, 7-day window, hourly cadence. Persists every
+  IOC to a new `threatfox_iocs` table (`ioc_id` PK), denormalising
+  `ioc_type` / `threat_type` / `malware{,_alias,_printable,_malpedia}` /
+  `confidence_level` / `first_seen` / `last_seen` / `tags[]` (GIN) plus
+  full upstream record in `raw` jsonb.
+- New `MalwarebazaarRunner` polls `POST mb-api.abuse.ch/api/v1/` with
+  `selector=time` (60 min window), hourly cadence. Persists each sample
+  to `malwarebazaar_samples` (`sha256_hash` PK) with `signature`,
+  `tags[]`, `file_type`, `file_size`, `reporter`, `intelligence` /
+  `vendor_intel` jsonb.
+- Both runners use the unified `ABUSECH_API_KEY` env var (URLhaus
+  switched from key-less to authenticated alongside, mirroring the
+  abuse.ch policy change). Both short-circuit cleanly when the key is
+  unset, so URLhaus + non-abuse.ch sources continue working in
+  key-less environments.
+- Prometheus: `tigerfetch_threatfox_fetches_total{status}`,
+  `tigerfetch_threatfox_iocs_processed_total`,
+  `tigerfetch_threatfox_run_duration_seconds` (and the matching
+  malwarebazaar trio).
+- Verified locally: ThreatFox 3,488 IOCs across {domain, url, ip:port,
+  sha256_hash} kinds; MalwareBazaar 319 samples; URLhaus 25,784 URLs
+  with 2,155 currently online. All three tables joinable to
+  `analysis_malware.canonical_name` and to tiger-eye's `analysis.key_iocs`.
+
+#### `Config.toml.example` — explicit `enabled = true` blocks for every Tier-1 source
+- Pre-this-release: only `[nvd]` / `[kev]` / `[epss]` were materialised in
+  the example, so a fresh deploy that copied `Config.toml.example` →
+  `Config.toml` would quietly run only those three. OSV / GHSA / MSF /
+  Nuclei were merged but config-dark.
+- Now: explicit `[osv]` (with the 11-ecosystem default list) / `[ghsa]` /
+  `[urlhaus]` / `[threatfox]` / `[malwarebazaar]` / `[nuclei]` / `[msf]`
+  blocks. `docker-compose.yml` gains `env_file: .env` on the tigerfetch
+  service so the abuse.ch + GHSA tokens propagate into the container.
+- Removes the dead `[mitre]` block — no Go code referenced it.
+
+#### Grafana dashboard set — `grafana/dashboards/{threat-intelligence,tiger-eye,tiger-watch}.json` + `tigerfetch-overview.json` row
+- **Tier-1 Threat-Intel Sources** row added to `tigerfetch-overview`:
+  per-source records-processed stat, success/error run-rate
+  timeseries, and p95 run duration across all 7 Tier-1 ingestors.
+- **threat-intelligence** dashboard gains an OSV / GHSA / URLhaus /
+  ThreatFox / MalwareBazaar / Nuclei / MSF volume row, plus SBOM-package
+  coverage panels powered by tiger-watch's lake.
+- **tiger-eye** dashboard (new): analysis volume, DLQ depth (retryable +
+  exhausted), model cost per day, per-prompt-version cost, p95 LLM
+  latency, embedding coverage.
+- **tiger-watch** dashboard (new): SBOM matches, advisories per
+  service, version-range eval throughput, "would have been a false
+  positive without range filter" delta.
+- All four datasources auto-provisioned (`prometheus`, `pg`).
+- Three Prometheus scrape jobs (`tigerfetch`, `tiger-eye`,
+  `tiger-watch`) — adds the previously-missing `tiger-watch` target so
+  its dashboard isn't dark.
+
+### Changed
+- README.md refreshed to reflect the post-Tier-1 shape (all 11 ingestors,
+  4 dashboards, env-var surface, project structure).
+- `docs/SOURCES-TIERED.md` — Tier-1 marked complete; Tier-2/3 queue updated.
+
+### Fixed
+- ThreatFox timestamps occasionally carry a trailing timezone
+  abbreviation (`2024-01-15 12:00:00 UTC`) that `time.Parse(time.RFC3339)`
+  refuses. Added a tolerant parser that strips the trailing token.
+- `gofmt` — blank comment line before `parseTime` trailer in
+  `internal/abusech/threatfox.go`.
+- `docker-compose.yml` now pins the database image to
+  `pgvector/pgvector:pg16` so the pgvector extension survives a
+  `docker compose down -v` + recreate (was previously falling back to
+  the postgres:16 base, leaving tiger-eye's embeddings unwritable).
+
+---
+
+## [Pre-1.4.0 / detail] — items rolled into v1.4.0 above
+
+This section retains the per-ingestor detail that lived in the
+`[Unreleased]` block before the v1.4.0 cut.
 
 #### Metasploit module metadata ingest (Tier-1) — `internal/msf/`, migration `20260516170000_create_msf_modules.sql`
 - New `MsfRunner` fetches Rapid7's pre-extracted JSON cache at
