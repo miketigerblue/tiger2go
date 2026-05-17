@@ -4,12 +4,15 @@
 
 # tigerfetch CLI (Python) — security triage utility
 
-This is a small dependency-free Python CLI for interacting with the Tigerfetch PostgREST API.
+A small dependency-free Python CLI for interacting with the PostgREST surface over the tiger2go lake.
 
 - Script: `scripts/tigerfetch_cli.py`
 - Python: 3.9+ (stdlib only)
+- Backing API: the PostgREST `api` schema (see [`API_ENDPOINTS_SECURITY_TRIAGE_GUIDE.md`](API_ENDPOINTS_SECURITY_TRIAGE_GUIDE.md))
 
-It’s designed for **security awareness + triage**:
+The CLI predates the v1.4.0 Tier-1 expansion: the `triage` / `cve` / `campaign` / `ioc` subcommands hit the analyst surface that's been stable since v1.1. Direct access to the new sources (OSV / GHSA / abuse.ch / Nuclei / MSF) is currently SQL-only — either via `psql` or the PostgREST `api` schema where those tables are exposed.
+
+It's designed for **security awareness + triage**:
 - `triage` — list recent HIGH/CRITICAL analyses
 - `cve` — fetch a CVE profile or generate a patch list
 - `campaign` — explore active campaigns and their CVE rollups

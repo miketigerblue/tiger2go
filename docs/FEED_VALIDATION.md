@@ -4,7 +4,19 @@
 
 # Feed validation
 
-> **Note:** The `validate_feeds` and `diagnose_feed` CLI tools were part of the original Rust implementation and have not yet been ported to Go. The Rust commands below are kept for reference. Feed validation in the Go codebase can be observed via the ingestor logs and Prometheus metrics (`tigerfetch_feed_fetches_total{status="error"}`).
+> **Scope:** This document covers **RSS/Atom feed** validation only.
+> The Tier-1 *structured* sources (NVD, KEV, EPSS, OSV, GHSA, URLhaus,
+> ThreatFox, MalwareBazaar, Nuclei, MSF) don't go through gofeed/bluemonday —
+> they hit their own typed APIs and have their own per-ingestor
+> `{source}_fetches_total{status}` Prometheus metric for failure
+> visibility. Use the `tigerfetch-overview` Grafana dashboard's
+> "Tier-1 Threat-Intel Sources" row to see fetch health for those.
+>
+> **Tooling note:** The `validate_feeds` and `diagnose_feed` CLI tools
+> were part of the original Rust implementation and have not yet been
+> ported to Go. The Rust commands below are kept for reference. Feed
+> validation in the Go codebase is observable via ingestor logs and
+> `tigerfetch_feed_fetches_total{status="error"}`.
 
 ## 1) Validate all feeds from a config file (Rust — not yet ported)
 
