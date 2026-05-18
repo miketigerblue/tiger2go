@@ -172,7 +172,10 @@ func Load() (*Config, error) {
 	// AutomaticEnv only resolves env vars during Get() — not during Unmarshal
 	// of nested struct keys that aren't already known via the config file or
 	// a SetDefault. Bind the credential keys explicitly so an empty/missing
-	// TOML stanza doesn't shadow the env var.
+	// TOML stanza doesn't shadow the env var. Same shape for `database_url`,
+	// which is otherwise invisible to Unmarshal in deploys without a
+	// Config.toml (see Dockerfile — Config.toml is intentionally excluded).
+	_ = v.BindEnv("database_url", "DATABASE_URL")
 	_ = v.BindEnv("abusech.api_key", "ABUSECH_API_KEY")
 	_ = v.BindEnv("ghsa.token", "GHSA_TOKEN")
 	_ = v.BindEnv("nvd.api_key", "NVD_API_KEY")

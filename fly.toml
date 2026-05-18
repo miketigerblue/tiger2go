@@ -1,23 +1,44 @@
-# fly.toml app configuration file generated for tiger2go on 2026-01-14T18:31:27Z
+# fly.toml — tigerfetch
 #
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+# Tier-1 ingestion service. Single-instance by design (cursor-based
+# ingestion is not concurrent-writer safe per docs/SYSTEM_DESIGN.md).
+# Co-located in LHR with the Fly mpg cluster + the rest of the stack.
 #
+# Secrets (set via `fly secrets set -a tigerfetch …`):
+#   DATABASE_URL      postgres://fly-user:…@pgbouncer.z23750vyjgp096d1.flympg.net/fly-db
+#   NVD_API_KEY       NVD higher rate-limit token (optional)
+#   GHSA_TOKEN        GitHub PAT for GHSA 5K req/h tier
+#   ABUSECH_API_KEY   URLhaus / ThreatFox / MalwareBazaar shared key
 
-app = 'tiger2go'
-primary_region = 'ams'
+app             = "tigerfetch"
+primary_region  = "lhr"
 
 [build]
+  dockerfile = "Dockerfile"
 
 [http_service]
-  internal_port = 9101
-  force_https = true
-  auto_stop_machines = 'off'
+  internal_port       = 9101
+  force_https         = true
+  auto_stop_machines  = "off"
   auto_start_machines = false
   min_machines_running = 1
-  processes = ['app']
+  processes           = ["app"]
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval     = "30s"
+  method       = "get"
+  path         = "/healthz"
+  protocol     = "http"
+  timeout      = "5s"
 
 [[vm]]
-  memory = '512mb'
-  cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 512
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "512mb"
+
+# Fly Hosted Prometheus scrapes /metrics on the same port the HTTP
+# service listens on. ~60 tigerfetch_* metrics published.
+[metrics]
+  port = 9101
+  path = "/metrics"
