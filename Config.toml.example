@@ -43,8 +43,12 @@ tags      = ["exploit", "poc", "weaponised"]
 # tags      = ["zero-day", "vendor-advisories"]
 
 [[feeds]]
-name      = "Google TAG Threat Blog"
-url       = "https://blog.google/threat-analysis-group/rss/"
+name      = "Google Online Security Blog"
+# 2026-05-19: blog.google/threat-analysis-group/rss/ now returns 404; Google
+# moved security content to security.googleblog.com which itself 302s to the
+# feedburner mirror below. The mirror covers TAG, Project Zero, and other
+# Google security posts in one stream.
+url       = "https://feeds.feedburner.com/GoogleOnlineSecurityBlog"
 feed_type = "threat-intel"
 tags      = ["apt", "targeted-attacks", "google"]
 
@@ -129,6 +133,23 @@ licence   = "Creative Commons BY 4.0"
 tags      = ["EU-advisories", "vulnerabilities"]
 
 [[feeds]]
+name      = "CERT-Bund Advisories"
+# 2026-05-19: probed and confirmed HTTP 200 application/rss+xml. Older
+# tigerfetch config had a different URL (/feeds/rss/advisories) which 404s
+# now; this is the current canonical path.
+url       = "https://wid.cert-bund.de/content/public/securityAdvisory/rss"
+feed_type = "official"
+licence   = "BSI / public-sector reuse"
+tags      = ["de", "advisories", "vulnerabilities"]
+
+[[feeds]]
+name      = "CERT-FR / ANSSI Advisories"
+url       = "https://www.cert.ssi.gouv.fr/feed/"
+feed_type = "official"
+licence   = "Etalab Open Licence 2.0"
+tags      = ["fr", "advisories", "vulnerabilities"]
+
+[[feeds]]
 name      = "Debian Security List"
 url       = "https://www.debian.org/security/dsa-long"
 feed_type = "official"
@@ -140,16 +161,21 @@ tags      = ["Debian Security", "vulnerabilities"]
 # 3. Vendor Security Advisories (Critical for Real-World SOC Work)
 # ----------------------------------------------------------------------
 
-# [[feeds]]
-# name      = "Microsoft MSRC Advisories"
-# url       = "https://api.msrc.microsoft.com/update-guide/feed"
-# feed_type = "vendor"
-# tags      = ["ms", "windows", "patch-tuesday", "vulnerabilities"]
-# NOTE: Disabled for now — requires API key and non-standard feed format.
+# 2026-05-20: restored from tigerfetch — the `/rss` path (not `/feed`)
+# returns valid application/rss+xml without auth. The "non-standard feed
+# format" note referred to the JSON variant; RSS works fine.
+[[feeds]]
+name      = "Microsoft MSRC Advisories"
+url       = "https://api.msrc.microsoft.com/update-guide/rss"
+feed_type = "vendor"
+tags      = ["ms", "windows", "patch-tuesday", "vulnerabilities"]
 
 [[feeds]]
 name      = "Cisco Security Advisories"
-url       = "https://tools.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisories.xml"
+# 2026-05-19: tools.cisco.com path now 302-redirects to sec.cloudapps.cisco.com
+# and reqwest's default follow=false meant we were silently dropping every
+# fetch. Pinning to the redirect target so we don't depend on follow-redirects.
+url       = "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisories.xml"
 feed_type = "vendor"
 tags      = ["cisco", "networking", "zero-day"]
 
@@ -217,14 +243,15 @@ feed_type = "malware"
 tags      = ["apt", "campaign", "exploits"]
 
 
-# NOTE(2025-12): Google Cloud topic feed URL guess returned 404.
-# Disable until we locate the correct RSS endpoint.
-#
-# [[feeds]]
-# name      = "Mandiant Threat Intelligence"
-# url       = "https://cloud.google.com/feeds/blog/topics/threat-intelligence.xml"
-# feed_type = "malware"
-# tags      = ["apt", "actor-tracking", "dfir"]
+# 2026-05-20: Mandiant blog migrated to Google Cloud (cloudblog.withgoogle.com)
+# during the Mandiant→Google Cloud Security integration. RSS reachable at
+# /topics/threat-intelligence/rss/. Channel <title> is generic "Threat
+# Intelligence" — tiger-eye applies a source_name override.
+[[feeds]]
+name      = "Mandiant / Google Cloud Threat Intelligence"
+url       = "https://cloudblog.withgoogle.com/topics/threat-intelligence/rss/"
+feed_type = "malware"
+tags      = ["apt", "actor-tracking", "dfir", "mandiant"]
 
 
 [[feeds]]
@@ -275,6 +302,27 @@ name      = "DarkReading"
 url       = "https://www.darkreading.com/rss.xml"
 feed_type = "news"
 tags      = ["enterprise", "breaches"]
+
+# 2026-05-20: restored from tigerfetch — confirmed HTTP 200 RSS.
+[[feeds]]
+name      = "CyberScoop"
+url       = "https://cyberscoop.com/feed/"
+feed_type = "news"
+tags      = ["government", "policy", "breaches"]
+
+[[feeds]]
+name      = "The Record by Recorded Future"
+url       = "https://therecord.media/feed"
+feed_type = "news"
+tags      = ["journalism", "breaches", "geopolitics"]
+
+[[feeds]]
+name      = "Sophos X-Ops Threat Research"
+# 2026-05-20: moved from www.sophos.com → news.sophos.com (kept the same
+# /category/threat-research/feed/ path).
+url       = "https://news.sophos.com/en-us/category/threat-research/feed/"
+feed_type = "threat-intel"
+tags      = ["malware", "ransomware", "research"]
 
 
 # [[feeds]]
