@@ -45,8 +45,11 @@ COPY --from=builder /app/tigerfetch /usr/local/bin/tigerfetch
 # Copy migrations (required for the app to run them)
 COPY --chown=app:app migrations ./migrations
 
-# Note: Config.toml is optional - app uses defaults/env vars if not present
-# Config.toml is excluded in .dockerignore to prevent secrets from being included
+# Bake the production Config.toml into the image. Structure-only —
+# secrets come from env vars (DATABASE_URL, NVD_API_KEY, GHSA_TOKEN,
+# ABUSECH_API_KEY) via viper's BindEnv. The dev Config.toml stays
+# excluded by .dockerignore so local credentials don't leak.
+COPY --chown=app:app Config.production.toml ./Config.toml
 
 EXPOSE 9101
 ENTRYPOINT ["tigerfetch"]

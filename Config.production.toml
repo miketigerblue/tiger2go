@@ -1,0 +1,285 @@
+# ----------------------------------------------------------------------
+# tigerfetch — production Config.toml
+#
+# Structure-only config baked into the runtime image (see Dockerfile).
+# NO SECRETS HERE — credentials come from Fly secrets via env vars:
+#
+#   DATABASE_URL      → database_url
+#   NVD_API_KEY       → nvd.api_key
+#   GHSA_TOKEN        → ghsa.token
+#   ABUSECH_API_KEY   → abusech.api_key
+#
+# viper precedence (Env > File > Default) means the env values
+# override anything here. Keep this file env-overrideable; do not
+# inline real credentials.
+#
+# Dev/local config: Config.toml (gitignored + .dockerignored, so the
+# committed Config.toml.example is the dev reference instead).
+# ----------------------------------------------------------------------
+
+# database_url comes from DATABASE_URL env (set via fly secrets)
+ingest_interval = "1h"
+server_bind     = "0.0.0.0:9101"
+
+
+# ----------------------------------------------------------------------
+# RSS / Atom feed sources
+# ----------------------------------------------------------------------
+
+[[feeds]]
+name      = "Exploit-DB New Exploits"
+url       = "https://www.exploit-db.com/rss.xml"
+feed_type = "exploits"
+tags      = ["exploit", "poc", "weaponised"]
+
+[[feeds]]
+name      = "Google Online Security Blog"
+url       = "https://feeds.feedburner.com/GoogleOnlineSecurityBlog"
+feed_type = "threat-intel"
+tags      = ["apt", "targeted-attacks", "google"]
+
+[[feeds]]
+name      = "CISA Cybersecurity Alerts"
+url       = "https://us-cert.cisa.gov/ncas/alerts.xml"
+feed_type = "official"
+licence   = "Public Domain (US Government)"
+tags      = ["threat-alerts", "vulnerabilities"]
+
+[[feeds]]
+name      = "CISA Vulnerability Advisories"
+url       = "https://www.cisa.gov/cybersecurity-advisories/all.xml"
+feed_type = "official"
+licence   = "Public Domain (US Government)"
+tags      = ["vulnerabilities", "patches"]
+
+[[feeds]]
+name      = "UK NCSC Updates"
+url       = "https://www.ncsc.gov.uk/api/1/services/v1/all-rss-feed.xml"
+feed_type = "official"
+licence   = "Open Government Licence v3.0"
+tags      = ["advisories", "guidance"]
+
+[[feeds]]
+name      = "JPCERT Vulnerability Notes"
+url       = "https://www.jpcert.or.jp/rss/jpcert-all.rdf"
+feed_type = "official"
+tags      = ["jp", "vulnerability", "advisories"]
+
+[[feeds]]
+name      = "SANS Internet Storm Center Diaries"
+url       = "https://isc.sans.edu/rssfeed_full.xml"
+feed_type = "community"
+licence   = "Creative Commons BY-NC-SA 3.0 US"
+tags      = ["analysis", "daily-threat"]
+
+[[feeds]]
+name      = "CERT‑EU Security Advisories"
+url       = "https://cert.europa.eu/publications/threat-intelligence-rss"
+feed_type = "official"
+licence   = "Creative Commons BY 4.0"
+tags      = ["EU-advisories", "vulnerabilities"]
+
+[[feeds]]
+name      = "CERT-Bund Advisories"
+url       = "https://wid.cert-bund.de/content/public/securityAdvisory/rss"
+feed_type = "official"
+licence   = "BSI / public-sector reuse"
+tags      = ["de", "advisories", "vulnerabilities"]
+
+[[feeds]]
+name      = "CERT-FR / ANSSI Advisories"
+url       = "https://www.cert.ssi.gouv.fr/feed/"
+feed_type = "official"
+licence   = "Etalab Open Licence 2.0"
+tags      = ["fr", "advisories", "vulnerabilities"]
+
+[[feeds]]
+name      = "Debian Security List"
+url       = "https://www.debian.org/security/dsa-long"
+feed_type = "official"
+licence   = "Software in the Public Interest (SPI)"
+tags      = ["Debian Security", "vulnerabilities"]
+
+[[feeds]]
+name      = "Microsoft MSRC Advisories"
+url       = "https://api.msrc.microsoft.com/update-guide/rss"
+feed_type = "vendor"
+tags      = ["ms", "windows", "patch-tuesday", "vulnerabilities"]
+
+[[feeds]]
+name      = "Cisco Security Advisories"
+url       = "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisories.xml"
+feed_type = "vendor"
+tags      = ["cisco", "networking", "zero-day"]
+
+[[feeds]]
+name      = "Ubuntu Security Notices"
+url       = "https://ubuntu.com/security/notices/rss.xml"
+feed_type = "vendor"
+tags      = ["linux", "ubuntu", "patch"]
+
+[[feeds]]
+name      = "MISP Project Blog"
+url       = "https://www.misp-project.org/feed.xml"
+feed_type = "malware"
+tags      = ["ioc", "apt", "campaign"]
+
+[[feeds]]
+name      = "Cisco Talos Intelligence"
+url       = "https://blog.talosintelligence.com/rss/"
+feed_type = "malware"
+tags      = ["apt", "campaign", "exploits"]
+
+[[feeds]]
+name      = "Mandiant / Google Cloud Threat Intelligence"
+url       = "https://cloudblog.withgoogle.com/topics/threat-intelligence/rss/"
+feed_type = "malware"
+tags      = ["apt", "actor-tracking", "dfir", "mandiant"]
+
+[[feeds]]
+name      = "Recorded Future Cyber Daily"
+url       = "https://www.recordedfuture.com/feed"
+feed_type = "threat-intel"
+tags      = ["apt", "analysis", "campaign"]
+
+[[feeds]]
+name      = "Palo Alto Unit42"
+url       = "https://unit42.paloaltonetworks.com/feed/"
+feed_type = "malware"
+tags      = ["apt", "cloud-threats", "malware"]
+
+[[feeds]]
+name      = "Krebs on Security"
+url       = "https://krebsonsecurity.com/feed/"
+feed_type = "analysis"
+tags      = ["journalism", "investigation", "breaches"]
+
+[[feeds]]
+name      = "BleepingComputer Security News"
+url       = "https://www.bleepingcomputer.com/feed/"
+feed_type = "news"
+tags      = ["breaches", "malware", "vulnerabilities"]
+
+[[feeds]]
+name      = "The Hacker News"
+url       = "https://feeds.feedburner.com/TheHackersNews"
+feed_type = "news"
+tags      = ["news", "malware", "breaches"]
+
+[[feeds]]
+name      = "Google Project Zero"
+url       = "https://googleprojectzero.blogspot.com/feeds/posts/default"
+feed_type = "exploits"
+tags      = ["zero-day", "browser", "research"]
+
+[[feeds]]
+name      = "SecurityWeek Breaking"
+url       = "https://feeds.feedburner.com/securityweek"
+feed_type = "news"
+tags      = ["breaches", "enterprise", "malware"]
+
+[[feeds]]
+name      = "DarkReading"
+url       = "https://www.darkreading.com/rss.xml"
+feed_type = "news"
+tags      = ["enterprise", "breaches"]
+
+[[feeds]]
+name      = "CyberScoop"
+url       = "https://cyberscoop.com/feed/"
+feed_type = "news"
+tags      = ["government", "policy", "breaches"]
+
+[[feeds]]
+name      = "The Record by Recorded Future"
+url       = "https://therecord.media/feed"
+feed_type = "news"
+tags      = ["journalism", "breaches", "geopolitics"]
+
+[[feeds]]
+name      = "Sophos X-Ops Threat Research"
+url       = "https://news.sophos.com/en-us/category/threat-research/feed/"
+feed_type = "threat-intel"
+tags      = ["malware", "ransomware", "research"]
+
+[[feeds]]
+name      = "The DFIR Report"
+url       = "https://thedfirreport.com/feed/"
+feed_type = "dfir"
+tags      = ["malware", "tactics", "hunting"]
+
+
+# ----------------------------------------------------------------------
+# Per-source ingestors
+# ----------------------------------------------------------------------
+
+[nvd]
+enabled       = true
+poll_interval = "1h"
+page_size     = 2000
+# api_key comes from NVD_API_KEY env
+
+[epss]
+enabled       = true
+poll_interval = "24h"
+url           = "https://api.first.org/data/v1/epss"
+page_size     = 5000
+
+[kev]
+enabled       = true
+poll_interval = "24h"
+url           = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+
+[osv]
+enabled       = true
+poll_interval = "24h"
+ecosystems = [
+  "PyPI",
+  "npm",
+  "Go",
+  "Maven",
+  "RubyGems",
+  "crates.io",
+  "Packagist",
+  "NuGet",
+  "Pub",
+  "Hex",
+  "Hackage",
+]
+
+[ghsa]
+enabled       = true
+poll_interval = "1h"
+page_size     = 100
+# token comes from GHSA_TOKEN env
+
+[nuclei]
+enabled       = true
+poll_interval = "24h"
+
+[msf]
+enabled       = true
+poll_interval = "24h"
+
+[abusech]
+# api_key comes from ABUSECH_API_KEY env (shared across the three sub-runners)
+
+[abusech.urlhaus]
+enabled       = true
+poll_interval = "1h"
+
+[abusech.threatfox]
+enabled       = true
+poll_interval = "1h"
+days          = 7
+
+[abusech.malwarebazaar]
+enabled       = true
+poll_interval = "1h"
+selector      = "time"
+
+[alerting]
+enabled       = true
+poll_interval = "1h"
+lookback_days = 7
+# webhooks configured via separate mechanism — leave empty for now
