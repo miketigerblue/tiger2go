@@ -271,7 +271,10 @@ poll_interval = "1h"
 [abusech.threatfox]
 enabled       = true
 poll_interval = "1h"
-days          = 7
+# Hourly poll with days=1 (~24h lookback) gives full coverage of fresh
+# IOCs without the multi-MB days=7 response that has been triggering
+# RST_STREAM(INTERNAL_ERROR) from abuse.ch's h2 edge mid-body.
+days          = 1
 
 [abusech.malwarebazaar]
 enabled       = true

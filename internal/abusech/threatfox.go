@@ -14,6 +14,7 @@ package abusech
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -251,6 +252,13 @@ func (r *ThreatFoxRunner) postOnce(ctx context.Context, url string, body []byte)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Auth-Key", r.apiKey)
+	// Go's http transport only auto-adds Accept-Encoding: gzip for GET/HEAD.
+	// abuse.ch's days=N response can be multi-MB uncompressed; without gzip
+	// the h2 stream has been observed RST_STREAM-ing mid-body. Setting the
+	// header ourselves opts into compression (and tells the transport NOT
+	// to transparently decompress — but encoding/json reads through any
+	// gzip reader we wrap below).
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := r.client.Do(req)
 	if err != nil {
@@ -263,7 +271,20 @@ func (r *ThreatFoxRunner) postOnce(ctx context.Context, url string, body []byte)
 		return nil, fmt.Errorf("post %s: status %d: %s", url, resp.StatusCode, string(b))
 	}
 
-	out, err := io.ReadAll(resp.Body)
+	// When we set Accept-Encoding ourselves, Go's transport leaves the
+	// body compressed (it only auto-decompresses for transport-set
+	// headers). Wrap with gzip.Reader if the server returned gzip.
+	var reader io.Reader = resp.Body
+	if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+		gz, gzErr := gzip.NewReader(resp.Body)
+		if gzErr != nil {
+			return nil, fmt.Errorf("gzip reader: %w", gzErr)
+		}
+		defer func() { _ = gz.Close() }()
+		reader = gz
+	}
+
+	out, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
