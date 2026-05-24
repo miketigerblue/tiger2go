@@ -15,7 +15,6 @@ package abusech
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -71,23 +70,17 @@ type ThreatFoxRunner struct {
 }
 
 func NewThreatFoxRunner(db *pgxpool.Pool, cfg config.ThreatFoxConfig, apiKey string) *ThreatFoxRunner {
-	// Force HTTP/1.1. threatfox-api.abuse.ch's h2 edge has been observed
-	// sending RST_STREAM(INTERNAL_ERROR) mid-response, which surfaces as
-	// `read body: stream error: stream ID 1; INTERNAL_ERROR`. Go's http
-	// transport only negotiates h2 when TLSNextProto["h2"] is present; an
-	// empty map disables the upgrade so we stay on h1. MalwareBazaar and
-	// URLhaus hit different abuse.ch endpoints and don't exhibit this.
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
-	tr.ForceAttemptHTTP2 = false
-
+	// abuse.ch's ThreatFox endpoint enforces HTTP/2 — forcing HTTP/1.1
+	// triggers `http2_handshake_failed` from the server. Stick with the
+	// default Transport (h2 + h1 negotiated via ALPN). The observed
+	// RST_STREAM(INTERNAL_ERROR) is handled by the postOnce + retry
+	// path in Run().
 	return &ThreatFoxRunner{
 		db:     db,
 		cfg:    cfg,
 		apiKey: apiKey,
 		client: &http.Client{
-			Transport: tr,
-			Timeout:   120 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 	}
 }
@@ -131,7 +124,12 @@ func (r *ThreatFoxRunner) Run(ctx context.Context) (retErr error) {
 
 	respBytes, err := r.postOnce(ctx, url, body)
 	if isTransientReadError(err) {
-		slog.Warn("ThreatFox transient error, retrying once", "error", err)
+		slog.Warn("ThreatFox transient error, retrying once after 2s", "error", err)
+		select {
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 		respBytes, err = r.postOnce(ctx, url, body)
 	}
 	if err != nil {
