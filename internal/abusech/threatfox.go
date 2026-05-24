@@ -15,6 +15,7 @@ package abusech
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -70,12 +71,23 @@ type ThreatFoxRunner struct {
 }
 
 func NewThreatFoxRunner(db *pgxpool.Pool, cfg config.ThreatFoxConfig, apiKey string) *ThreatFoxRunner {
+	// Force HTTP/1.1. threatfox-api.abuse.ch's h2 edge has been observed
+	// sending RST_STREAM(INTERNAL_ERROR) mid-response, which surfaces as
+	// `read body: stream error: stream ID 1; INTERNAL_ERROR`. Go's http
+	// transport only negotiates h2 when TLSNextProto["h2"] is present; an
+	// empty map disables the upgrade so we stay on h1. MalwareBazaar and
+	// URLhaus hit different abuse.ch endpoints and don't exhibit this.
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	tr.ForceAttemptHTTP2 = false
+
 	return &ThreatFoxRunner{
 		db:     db,
 		cfg:    cfg,
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Transport: tr,
+			Timeout:   120 * time.Second,
 		},
 	}
 }
@@ -117,27 +129,13 @@ func (r *ThreatFoxRunner) Run(ctx context.Context) (retErr error) {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+	respBytes, err := r.postOnce(ctx, url, body)
+	if isTransientReadError(err) {
+		slog.Warn("ThreatFox transient error, retrying once", "error", err)
+		respBytes, err = r.postOnce(ctx, url, body)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Auth-Key", r.apiKey)
-
-	resp, err := r.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("post %s: %w", url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("post %s: status %d: %s", url, resp.StatusCode, string(b))
-	}
-
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read body: %w", err)
+		return err
 	}
 
 	var parsed threatFoxResponse
@@ -242,6 +240,59 @@ func (r *ThreatFoxRunner) upsertAll(ctx context.Context, iocs []ThreatFoxIOC) (i
 		processed++
 	}
 	return processed, nil
+}
+
+// postOnce issues a single POST + body read, returning the raw bytes.
+// Pulled out of Run so the call site can retry without duplicating the
+// request setup. body is the raw JSON to POST; we wrap it in a fresh
+// bytes.Reader each call so the second attempt restarts cleanly.
+func (r *ThreatFoxRunner) postOnce(ctx context.Context, url string, body []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Auth-Key", r.apiKey)
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("post %s: %w", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("post %s: status %d: %s", url, resp.StatusCode, string(b))
+	}
+
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	return out, nil
+}
+
+// isTransientReadError flags errors worth one retry. We force HTTP/1.1
+// for ThreatFox (see NewThreatFoxRunner), but keep this guard so any
+// short read / unexpected EOF / connection-reset gets a second chance
+// before the 1h-cadence run gives up.
+func isTransientReadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	for _, needle := range []string{
+		"stream error",      // http2 RST_STREAM
+		"INTERNAL_ERROR",    // http2 error code names
+		"unexpected EOF",    // truncated body
+		"connection reset",  // mid-flight network drop
+		"broken pipe",
+	} {
+		if strings.Contains(s, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseBoolish handles abuse.ch's "0"/"1"/"true"/"false" string encoding

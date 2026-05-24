@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"tiger2go/internal/config"
@@ -166,6 +167,7 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 	}
 
 	batch := &pgx.Batch{}
+	queuedPerVuln := 0 // 2 statements per vuln: cve_enriched + cve_kev
 	queued := 0
 
 	for _, v := range vulns {
@@ -175,6 +177,7 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 			continue
 		}
 
+		// (1) cve_enriched — legacy source-keyed view; downstream tiger-eye joins on this.
 		batch.Queue(`
 			INSERT INTO cve_enriched (cve_id, source, json, modified)
 			VALUES ($1, 'CISA-KEV', $2, $3)
@@ -183,13 +186,53 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 				json = EXCLUDED.json,
 				modified = EXCLUDED.modified
 		`, v.CveID, jsonBytes, modified)
+
+		// (2) cve_kev — first-class typed columns. Mirror exactly the
+		// projection used by scripts/backfill_cve_kev.sql so a re-run of
+		// that script remains a no-op.
+		batch.Queue(`
+			INSERT INTO cve_kev (
+				cve_id, vulnerability_name, vendor_project, product,
+				short_description, required_action, date_added, due_date,
+				known_ransomware_use, notes, cwes, raw, last_seen_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, now())
+			ON CONFLICT (cve_id) DO UPDATE SET
+				vulnerability_name   = EXCLUDED.vulnerability_name,
+				vendor_project       = EXCLUDED.vendor_project,
+				product              = EXCLUDED.product,
+				short_description    = EXCLUDED.short_description,
+				required_action      = EXCLUDED.required_action,
+				date_added           = EXCLUDED.date_added,
+				due_date             = EXCLUDED.due_date,
+				known_ransomware_use = EXCLUDED.known_ransomware_use,
+				notes                = EXCLUDED.notes,
+				cwes                 = EXCLUDED.cwes,
+				raw                  = EXCLUDED.raw,
+				last_seen_at         = now()
+		`,
+			v.CveID,
+			nilEmptyKev(v.VulnerabilityName),
+			nilEmptyKev(v.VendorProject),
+			nilEmptyKev(v.Product),
+			nilEmptyKev(v.ShortDescription),
+			nilEmptyKev(v.RequiredAction),
+			parseKevDate(v.DateAdded),
+			parseKevDate(v.DueDate),
+			strings.EqualFold(strings.TrimSpace(v.KnownRansomwareCampaignUse), "known"),
+			nilEmptyKev(v.Notes),
+			v.CWEs,
+			jsonBytes,
+		)
+
 		queued++
+		queuedPerVuln = 2
 	}
 
 	br := r.db.SendBatch(ctx, batch)
 	defer func() { _ = br.Close() }()
 
-	for i := 0; i < queued; i++ {
+	for i := 0; i < queued*queuedPerVuln; i++ {
 		_, err := br.Exec()
 		if err != nil {
 			return fmt.Errorf("batch execution failed at index %d: %w", i, err)
@@ -197,6 +240,31 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 	}
 
 	return nil
+}
+
+// nilEmptyKev returns nil for empty/whitespace strings so DB columns
+// store NULL rather than ''. Mirrors the NULLIF semantics in
+// scripts/backfill_cve_kev.sql.
+func nilEmptyKev(s string) any {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return s
+}
+
+// parseKevDate parses the CISA YYYY-MM-DD date strings to a *time.Time
+// that pgx writes as a DATE. Returns nil for unrecognised input — the
+// backfill script's `~ '^\d{4}-\d{2}-\d{2}$'` regex guard inspired this.
+func parseKevDate(s string) *time.Time {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 func (r *KevRunner) getCursor(ctx context.Context) (string, error) {
