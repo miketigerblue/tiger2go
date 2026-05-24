@@ -301,10 +301,10 @@ func isTransientReadError(err error) bool {
 	}
 	s := err.Error()
 	for _, needle := range []string{
-		"stream error",      // http2 RST_STREAM
-		"INTERNAL_ERROR",    // http2 error code names
-		"unexpected EOF",    // truncated body
-		"connection reset",  // mid-flight network drop
+		"stream error",     // http2 RST_STREAM
+		"INTERNAL_ERROR",   // http2 error code names
+		"unexpected EOF",   // truncated body
+		"connection reset", // mid-flight network drop
 		"broken pipe",
 	} {
 		if strings.Contains(s, needle) {

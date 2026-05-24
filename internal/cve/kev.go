@@ -243,7 +243,7 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 }
 
 // nilEmptyKev returns nil for empty/whitespace strings so DB columns
-// store NULL rather than ''. Mirrors the NULLIF semantics in
+// store NULL rather than ”. Mirrors the NULLIF semantics in
 // scripts/backfill_cve_kev.sql.
 func nilEmptyKev(s string) any {
 	if strings.TrimSpace(s) == "" {
