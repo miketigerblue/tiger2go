@@ -28,14 +28,39 @@ type NvdResponse struct {
 	Vulnerabilities []NvdCveItem `json:"vulnerabilities"`
 }
 
+type NvdDescription struct {
+	Lang  string `json:"lang"`
+	Value string `json:"value"`
+}
+
 type NvdCveItem struct {
 	Cve struct {
-		ID           string          `json:"id"`
-		LastModified string          `json:"lastModified"`
-		Metrics      json.RawMessage `json:"metrics"`
-		// We capture the whole raw CVE object for storage,
-		// but unmarshal specific fields for indexing.
+		ID           string           `json:"id"`
+		LastModified string           `json:"lastModified"`
+		Metrics      json.RawMessage  `json:"metrics"`
+		// Kept verbatim so the app can render NVD's own prose and CWE
+		// mappings (descriptions filtered to English at save time —
+		// see englishOnly). Fields NOT listed here are deliberately
+		// dropped: configurations/references are large and the app
+		// sources references from OSV.
+		Descriptions []NvdDescription `json:"descriptions,omitempty"`
+		Weaknesses   json.RawMessage  `json:"weaknesses,omitempty"`
 	} `json:"cve"`
+}
+
+// englishOnly keeps the English description(s) — NVD ships es/fr
+// translations that would roughly double stored prose for no reader.
+func englishOnly(descs []NvdDescription) []NvdDescription {
+	var out []NvdDescription
+	for _, d := range descs {
+		if d.Lang == "en" {
+			out = append(out, d)
+		}
+	}
+	if out == nil && len(descs) > 0 {
+		out = descs[:1]
+	}
+	return out
 }
 
 // Helper to extract the full raw JSON of the item since we can't easily Unmarshal into itself
@@ -262,6 +287,7 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 	queued := 0
 
 	for _, item := range items {
+		item.Cve.Descriptions = englishOnly(item.Cve.Descriptions)
 		// Convert the cve struct back to JSON for storage
 		cveJSON, err := json.Marshal(item.Cve)
 		if err != nil {

@@ -2,6 +2,7 @@ package cve
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -86,4 +87,44 @@ func TestNvdRunner_Integration(t *testing.T) {
 
 	// Clean up
 	_, _ = pool.Exec(ctx, "DELETE FROM cve_enriched WHERE cve_id = 'CVE-TEST-NVD-001'")
+}
+
+func TestNvdItemRetainsDescriptionsAndWeaknesses(t *testing.T) {
+	payload := []byte(`{
+		"cve": {
+			"id": "CVE-2026-99999",
+			"lastModified": "2026-08-05T12:00:00.000",
+			"metrics": {"cvssMetricV31": []},
+			"descriptions": [
+				{"lang": "en", "value": "An authentication bypass in ExampleD."},
+				{"lang": "es", "value": "Una omisión de autenticación."}
+			],
+			"weaknesses": [
+				{"source": "nvd@nist.gov", "type": "Primary",
+				 "description": [{"lang": "en", "value": "CWE-287"}]}
+			]
+		}
+	}`)
+	var item NvdCveItem
+	require.NoError(t, json.Unmarshal(payload, &item))
+
+	item.Cve.Descriptions = englishOnly(item.Cve.Descriptions)
+	out, err := json.Marshal(item.Cve)
+	require.NoError(t, err)
+
+	var roundTrip map[string]any
+	require.NoError(t, json.Unmarshal(out, &roundTrip))
+	descs := roundTrip["descriptions"].([]any)
+	assert.Len(t, descs, 1, "non-English descriptions must be dropped")
+	assert.Contains(t, descs[0].(map[string]any)["value"], "authentication bypass")
+	weaknesses := roundTrip["weaknesses"].([]any)
+	assert.Contains(t,
+		weaknesses[0].(map[string]any)["description"].([]any)[0].(map[string]any)["value"],
+		"CWE-287")
+}
+
+func TestEnglishOnlyFallsBackToFirst(t *testing.T) {
+	descs := []NvdDescription{{Lang: "es", Value: "solo español"}}
+	assert.Len(t, englishOnly(descs), 1)
+	assert.Nil(t, englishOnly(nil))
 }
