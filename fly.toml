@@ -35,7 +35,8 @@ primary_region  = "lhr"
 [[vm]]
   cpu_kind = "shared"
   cpus     = 1
-  memory   = "512mb"
+  # Bumped 512mb→2gb after OOM (exit 137, oom_killed) stalled ingestion 2026-05-24.
+  memory   = "2gb"
 
 # Fly Hosted Prometheus scrapes /metrics on the same port the HTTP
 # service listens on. ~60 tigerfetch_* metrics published.
