@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"tiger2go/internal/config"
@@ -35,17 +36,125 @@ type NvdDescription struct {
 
 type NvdCveItem struct {
 	Cve struct {
-		ID           string           `json:"id"`
-		LastModified string           `json:"lastModified"`
-		Metrics      json.RawMessage  `json:"metrics"`
+		ID           string          `json:"id"`
+		LastModified string          `json:"lastModified"`
+		Metrics      json.RawMessage `json:"metrics"`
 		// Kept verbatim so the app can render NVD's own prose and CWE
 		// mappings (descriptions filtered to English at save time —
-		// see englishOnly). Fields NOT listed here are deliberately
-		// dropped: configurations/references are large and the app
-		// sources references from OSV.
+		// see englishOnly). `references` is still dropped: it is large
+		// and the app sources references from OSV.
 		Descriptions []NvdDescription `json:"descriptions,omitempty"`
 		Weaknesses   json.RawMessage  `json:"weaknesses,omitempty"`
+		// Applicability. Parsed and exploded into cve_cpe, then cleared
+		// before the record is stored — the rows are what queries need
+		// and the blob would roughly triple cve_enriched for nothing.
+		// Dropping this outright was the reason nothing in the lake
+		// could answer "which CVEs affect FortiOS 7.2.4".
+		Configurations []NvdConfiguration `json:"configurations,omitempty"`
 	} `json:"cve"`
+}
+
+// NvdConfiguration is one applicability statement. NVD nests
+// configurations[].nodes[].cpeMatch[]; the AND/OR logic between nodes
+// expresses "vulnerable only when running on X", which we deliberately
+// flatten — a customer asking "am I affected" is better served by a
+// candidate they can dismiss than by a silent omission.
+type NvdConfiguration struct {
+	Nodes []struct {
+		Operator string        `json:"operator"`
+		Negate   bool          `json:"negate"`
+		CpeMatch []NvdCpeMatch `json:"cpeMatch"`
+	} `json:"nodes"`
+}
+
+type NvdCpeMatch struct {
+	Vulnerable            bool   `json:"vulnerable"`
+	Criteria              string `json:"criteria"`
+	MatchCriteriaID       string `json:"matchCriteriaId"`
+	VersionStartIncluding string `json:"versionStartIncluding"`
+	VersionStartExcluding string `json:"versionStartExcluding"`
+	VersionEndIncluding   string `json:"versionEndIncluding"`
+	VersionEndExcluding   string `json:"versionEndExcluding"`
+}
+
+// cpeRow is a flattened cpeMatch ready for insert.
+type cpeRow struct {
+	part, vendor, product, version, update string
+	startIncl, startExcl, endIncl, endExcl string
+	vulnerable                             bool
+	criteria, matchID                      string
+}
+
+// parseCpe23 splits a CPE 2.3 formatted string. The format is
+// cpe:2.3:<part>:<vendor>:<product>:<version>:<update>:... with colons
+// inside components escaped as \:. Returns ok=false for anything that
+// is not a well-formed 2.3 URI rather than guessing.
+func parseCpe23(criteria string) (part, vendor, product, version, update string, ok bool) {
+	if !strings.HasPrefix(criteria, "cpe:2.3:") {
+		return "", "", "", "", "", false
+	}
+	var fields []string
+	var cur strings.Builder
+	escaped := false
+	for _, r := range criteria[len("cpe:2.3:"):] {
+		switch {
+		case escaped:
+			cur.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			cur.WriteRune(r)
+			escaped = true
+		case r == ':':
+			fields = append(fields, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	fields = append(fields, cur.String())
+	if len(fields) < 5 {
+		return "", "", "", "", "", false
+	}
+	return fields[0], fields[1], fields[2], fields[3], fields[4], true
+}
+
+// flattenCpe walks configurations[].nodes[].cpeMatch[] into rows,
+// dropping non-vulnerable entries (those describe the platform the
+// vulnerable thing runs on, not the vulnerable thing) and de-duplicating
+// identical nodes, which NVD does emit.
+func flattenCpe(configs []NvdConfiguration) []cpeRow {
+	seen := map[string]struct{}{}
+	rows := make([]cpeRow, 0, 8)
+	for _, cfg := range configs {
+		for _, node := range cfg.Nodes {
+			if node.Negate {
+				continue
+			}
+			for _, m := range node.CpeMatch {
+				if !m.Vulnerable {
+					continue
+				}
+				part, vendor, product, version, update, ok := parseCpe23(m.Criteria)
+				if !ok || vendor == "" || product == "" {
+					continue
+				}
+				key := m.Criteria + "|" + m.VersionStartIncluding + "|" + m.VersionStartExcluding +
+					"|" + m.VersionEndIncluding + "|" + m.VersionEndExcluding
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				rows = append(rows, cpeRow{
+					part: part, vendor: vendor, product: product,
+					version: version, update: update,
+					startIncl: m.VersionStartIncluding, startExcl: m.VersionStartExcluding,
+					endIncl: m.VersionEndIncluding, endExcl: m.VersionEndExcluding,
+					vulnerable: true, criteria: m.Criteria, matchID: m.MatchCriteriaID,
+				})
+			}
+		}
+	}
+	return rows
 }
 
 // englishOnly keeps the English description(s) — NVD ships es/fr
@@ -288,6 +397,33 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 
 	for _, item := range items {
 		item.Cve.Descriptions = englishOnly(item.Cve.Descriptions)
+
+		// Explode applicability into rows, then clear it: cve_cpe is
+		// what queries use, and keeping the blob as well would roughly
+		// triple this column for no reader. Delete-then-insert per CVE
+		// rather than upsert, so an applicability statement NVD has
+		// REMOVED disappears here too.
+		cpeRows := flattenCpe(item.Cve.Configurations)
+		item.Cve.Configurations = nil
+		batch.Queue(`DELETE FROM cve_cpe WHERE cve_id = $1`, item.Cve.ID)
+		queued++
+		for _, c := range cpeRows {
+			batch.Queue(`
+				INSERT INTO cve_cpe (
+					cve_id, part, vendor, product, version, update_field,
+					version_start_including, version_start_excluding,
+					version_end_including, version_end_excluding,
+					vulnerable, criteria, match_criteria_id)
+				VALUES ($1,$2,$3,$4,$5,$6,
+					NULLIF($7,''), NULLIF($8,''), NULLIF($9,''), NULLIF($10,''),
+					$11,$12,NULLIF($13,''))
+			`, item.Cve.ID, c.part, c.vendor, c.product, c.version, c.update,
+				c.startIncl, c.startExcl, c.endIncl, c.endExcl,
+				c.vulnerable, c.criteria, c.matchID)
+			queued++
+			metrics.NvdCpeRows.Inc()
+		}
+
 		// Convert the cve struct back to JSON for storage
 		cveJSON, err := json.Marshal(item.Cve)
 		if err != nil {

@@ -72,6 +72,15 @@ var NvdCvesWithoutCvss = promauto.NewCounter(prometheus.CounterOpts{
 	Help: "CVEs ingested with no CVSS score.",
 })
 
+// CPE applicability rows written. Watch this against
+// NvdCvesProcessed: a sustained ratio near zero means NVD has changed
+// the configurations shape and estate matching has gone blind — the
+// failure mode that hid for months when the field was simply dropped.
+var NvdCpeRows = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "tigerfetch_nvd_cpe_rows_total",
+	Help: "CPE applicability rows written from NVD configurations.",
+})
+
 var NvdBatchSize = promauto.NewHistogram(prometheus.HistogramOpts{
 	Name:    "tigerfetch_nvd_batch_size",
 	Help:    "Distribution of NVD batch sizes.",
