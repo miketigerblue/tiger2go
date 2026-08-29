@@ -36,22 +36,73 @@ type NvdDescription struct {
 
 type NvdCveItem struct {
 	Cve struct {
-		ID           string          `json:"id"`
-		LastModified string          `json:"lastModified"`
-		Metrics      json.RawMessage `json:"metrics"`
+		ID string `json:"id"`
+		// Which CNA issued the record — the only way to tell a vendor
+		// PSIRT's own assessment from cve@mitre.org's.
+		SourceIdentifier string `json:"sourceIdentifier,omitempty"`
+		// First publication, as distinct from last revision. Without
+		// it the lake cannot answer "what is new this week" at all: a
+		// 2015 CVE that NVD touched yesterday is indistinguishable
+		// from one disclosed yesterday.
+		Published    string `json:"published,omitempty"`
+		LastModified string `json:"lastModified"`
+		// Analysis state — Analyzed / Modified / Deferred / Rejected /
+		// Awaiting Analysis. Rejected CVEs are withdrawn, and without
+		// this the only way to spot one is to string-match the
+		// description prose; 18,162 were sitting in the lake
+		// indistinguishable from live findings. Deferred matters too:
+		// NVD has abandoned those, so they never gain configurations
+		// and can never match an SBOM — "not affected" and "never
+		// analysed" were the same answer until now.
+		VulnStatus string `json:"vulnStatus,omitempty"`
+		// Carries "disputed" and friends. Two bytes on most records.
+		CveTags []NvdCveTag `json:"cveTags,omitempty"`
+		// Stored verbatim. Note this blob already carried CVSS v2, v4.0
+		// and CISA's SSVC decision points long before anything read
+		// them out — see extractCvssScore and extractSsvc.
+		Metrics json.RawMessage `json:"metrics"`
 		// Kept verbatim so the app can render NVD's own prose and CWE
 		// mappings (descriptions filtered to English at save time —
-		// see englishOnly). `references` is still dropped: it is large
-		// and the app sources references from OSV.
+		// see englishOnly).
 		Descriptions []NvdDescription `json:"descriptions,omitempty"`
 		Weaknesses   json.RawMessage  `json:"weaknesses,omitempty"`
+		// Advisory / patch / exploit links, trimmed to url+tags at save
+		// time (see trimReferences). Previously dropped on the grounds
+		// that the app sources references from OSV — but OSV covers
+		// package-ecosystem advisories and holds a record for only 8.2%
+		// of the CVEs in this lake. For the other 91.8% there was no
+		// link to an advisory, patch or exploit anywhere in it.
+		References []NvdReference `json:"references,omitempty"`
 		// Applicability. Parsed and exploded into cve_cpe, then cleared
 		// before the record is stored — the rows are what queries need
 		// and the blob would roughly triple cve_enriched for nothing.
 		// Dropping this outright was the reason nothing in the lake
 		// could answer "which CVEs affect FortiOS 7.2.4".
+		//
+		// NVD 2.0 also ships an `affected` array, deliberately NOT
+		// parsed: it is CNA-submitted free text, overwhelmingly
+		// {"vendor":"n/a","product":"n/a"}, and in a 2,000-record
+		// sample only 17 records carried it without configurations.
+		// It would cost more storage than every field added alongside
+		// it here combined, for almost nothing over cve_cpe.
 		Configurations []NvdConfiguration `json:"configurations,omitempty"`
 	} `json:"cve"`
+}
+
+// NvdCveTag is one CNA's tag set for a CVE, e.g.
+// {"sourceIdentifier": "cve@mitre.org", "tags": ["disputed"]}.
+type NvdCveTag struct {
+	SourceIdentifier string   `json:"sourceIdentifier"`
+	Tags             []string `json:"tags"`
+}
+
+// NvdReference is one advisory link. NVD also sends `source` (the CNA
+// that contributed the link); it is dropped at save time, where it
+// duplicates sourceIdentifier for most rows and costs 28% of the
+// reference bytes.
+type NvdReference struct {
+	URL  string   `json:"url"`
+	Tags []string `json:"tags,omitempty"`
 }
 
 // NvdConfiguration is one applicability statement. NVD nests
@@ -168,6 +219,60 @@ func englishOnly(descs []NvdDescription) []NvdDescription {
 	}
 	if out == nil && len(descs) > 0 {
 		out = descs[:1]
+	}
+	return out
+}
+
+// trimReferences drops NVD's per-link `source` and any link with no
+// URL. References run ~7.2 per CVE; keeping url+tags is 72% of the
+// full bytes, and `source` is the CNA that contributed the link, which
+// sourceIdentifier already carries for the record as a whole.
+//
+// The tags are worth keeping in full: "Patch", "Exploit" and
+// "Vendor Advisory" are exactly what makes a link worth surfacing over
+// its six siblings.
+func trimReferences(refs []NvdReference) []NvdReference {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]NvdReference, 0, len(refs))
+	for _, r := range refs {
+		if r.URL == "" {
+			continue
+		}
+		out = append(out, NvdReference{URL: r.URL, Tags: r.Tags})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// flattenCveTags collapses cveTags[].tags across every contributing CNA
+// into one deduplicated set, so a filter is `'disputed' = ANY(cve_tags)`
+// rather than a nested jsonb walk. Which CNA raised the tag is not kept:
+// for a "should this finding be shown" decision the tag is what matters,
+// not who applied it.
+func flattenCveTags(tags []NvdCveTag) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 2)
+	for _, t := range tags {
+		for _, v := range t.Tags {
+			if v == "" {
+				continue
+			}
+			if _, dup := seen[v]; dup {
+				continue
+			}
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -424,6 +529,9 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 			metrics.NvdCpeRows.Inc()
 		}
 
+		// Advisory links, minus the per-link `source`.
+		item.Cve.References = trimReferences(item.Cve.References)
+
 		// Convert the cve struct back to JSON for storage
 		cveJSON, err := json.Marshal(item.Cve)
 		if err != nil {
@@ -431,27 +539,58 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 			continue
 		}
 
-		// Parse modified time
-		modified, err := time.Parse(time.RFC3339, item.Cve.LastModified)
-		if err != nil {
-			modified = time.Now()
+		// Parse modified time. NVD's format is not RFC3339 — see
+		// parseNvdTime. Fall back to now() only so the row still lands;
+		// it is logged, because a silent fallback here is exactly how
+		// this column came to hold ingest times for every row.
+		modified, ok := parseNvdTime(item.Cve.LastModified)
+		if !ok {
+			slog.Warn("Unparseable NVD lastModified, using ingest time",
+				"id", item.Cve.ID, "value", item.Cve.LastModified)
+			modified = time.Now().UTC()
 		}
 
-		// Extract CVSS Base Score (V3.1 preferred)
-		cvssBase := extractCvssScore(item.Cve.Metrics)
-		if cvssBase == nil {
+		// published is left NULL rather than defaulted: "unknown" is a
+		// truthful answer, and a fabricated publication date would
+		// quietly corrupt every "new this week" query built on it.
+		var published *time.Time
+		if p, ok := parseNvdTime(item.Cve.Published); ok {
+			published = &p
+		}
+
+		m := parseMetrics(item.Cve.Metrics)
+		if m.CvssBase == nil {
 			metrics.NvdCvesWithoutCvss.Inc()
 		}
 
 		batch.Queue(`
-			INSERT INTO cve_enriched (cve_id, source, json, cvss_base, modified)
-			VALUES ($1, 'NVD', $2, $3, $4)
+			INSERT INTO cve_enriched (
+				cve_id, source, json, cvss_base, modified,
+				published, vuln_status, source_identifier, cve_tags,
+				cvss_version, ssvc_exploitation, ssvc_automatable,
+				ssvc_technical_impact)
+			VALUES ($1, 'NVD', $2, $3, $4,
+				$5, NULLIF($6,''), NULLIF($7,''), $8,
+				NULLIF($9,''), NULLIF($10,''), NULLIF($11,''),
+				NULLIF($12,''))
 			ON CONFLICT (cve_id, source)
 			DO UPDATE SET
-				json = EXCLUDED.json,
-				cvss_base = EXCLUDED.cvss_base,
-				modified = EXCLUDED.modified
-		`, item.Cve.ID, cveJSON, cvssBase, modified)
+				json                  = EXCLUDED.json,
+				cvss_base             = EXCLUDED.cvss_base,
+				modified              = EXCLUDED.modified,
+				published             = EXCLUDED.published,
+				vuln_status           = EXCLUDED.vuln_status,
+				source_identifier     = EXCLUDED.source_identifier,
+				cve_tags              = EXCLUDED.cve_tags,
+				cvss_version          = EXCLUDED.cvss_version,
+				ssvc_exploitation     = EXCLUDED.ssvc_exploitation,
+				ssvc_automatable      = EXCLUDED.ssvc_automatable,
+				ssvc_technical_impact = EXCLUDED.ssvc_technical_impact
+		`, item.Cve.ID, cveJSON, m.CvssBase, modified,
+			published, item.Cve.VulnStatus, item.Cve.SourceIdentifier,
+			flattenCveTags(item.Cve.CveTags),
+			m.CvssVersion, m.SsvcExploitation, m.SsvcAutomatable,
+			m.SsvcTechnicalImpact)
 		queued++
 	}
 
@@ -468,36 +607,138 @@ func (r *NvdRunner) saveBatch(ctx context.Context, items []NvdCveItem) error {
 	return nil
 }
 
-// extractCvssScore tries to extract CVSS V3.1 or V3.0 base score
-func extractCvssScore(metricsRaw json.RawMessage) *float64 {
+// nvdMetrics is everything worth pulling out of the metrics blob. The
+// blob itself is still stored verbatim; these are the fields promoted
+// to columns so they can be filtered and indexed.
+type nvdMetrics struct {
+	CvssBase    *float64
+	CvssVersion string // "3.1" | "3.0" | "4.0" | "2.0"
+
+	// CISA SSVC v2.0.3 decision points. Present on ~45% of NVD records
+	// and never previously read, though they were being stored all
+	// along: exploitation=active is an exploitation assertion from CISA
+	// that corroborates the KEV catalogue from a different direction.
+	SsvcExploitation    string // none | poc | active
+	SsvcAutomatable     string // no | yes
+	SsvcTechnicalImpact string // partial | total
+}
+
+// parseMetrics decodes the metrics blob once. Preference order for the
+// base score is v3.1 → v3.0 → v4.0 → v2.0.
+//
+// v4.0 sits below v3.x deliberately: NVD is still dual-publishing, and
+// while CNAs migrate, ranking v4.0 first would make scores jump around
+// between adjacent CVEs for no analytical gain. It sits above v2.0
+// because a current-generation score beats a 2007 one.
+//
+// v2.0 last, and never silently: a v2 base score is NOT comparable to
+// a v3 one (different formula, different meaning of 7.5), which is why
+// CvssVersion is recorded alongside. 70,872 rows in this lake had a v2
+// score and a NULL cvss_base — visibly wrong beats invisibly absent,
+// but only if the consumer can see which scale it is reading.
+func parseMetrics(metricsRaw json.RawMessage) nvdMetrics {
+	var out nvdMetrics
 	if len(metricsRaw) == 0 {
-		return nil
+		return out
 	}
 
-	// Simple structure for parsing just what we need
-	type CvssData struct {
-		BaseScore float64 `json:"baseScore"`
+	// BaseScore is a pointer so an entry that exists without a score is
+	// distinguishable from a genuine 0.0 (which CVSS does define).
+	type cvssData struct {
+		BaseScore *float64 `json:"baseScore"`
 	}
-	type CvssMetric struct {
-		CvssData CvssData `json:"cvssData"`
+	type cvssMetric struct {
+		CvssData cvssData `json:"cvssData"`
 	}
-	type Metrics struct {
-		CvssMetricV31 []CvssMetric `json:"cvssMetricV31"`
-		CvssMetricV30 []CvssMetric `json:"cvssMetricV30"`
+	type ssvcEntry struct {
+		SsvcData struct {
+			// Each option is a single-key object:
+			// [{"exploitation":"active"},{"automatable":"no"}]
+			Options []map[string]string `json:"options"`
+		} `json:"ssvcData"`
+	}
+	type metrics struct {
+		CvssMetricV31 []cvssMetric `json:"cvssMetricV31"`
+		CvssMetricV30 []cvssMetric `json:"cvssMetricV30"`
+		CvssMetricV40 []cvssMetric `json:"cvssMetricV40"`
+		CvssMetricV2  []cvssMetric `json:"cvssMetricV2"`
+		SsvcV203      []ssvcEntry  `json:"ssvcV203"`
 	}
 
-	var m Metrics
+	var m metrics
 	if err := json.Unmarshal(metricsRaw, &m); err != nil {
-		return nil
+		return out
 	}
 
-	if len(m.CvssMetricV31) > 0 {
-		return &m.CvssMetricV31[0].CvssData.BaseScore
+	for _, c := range []struct {
+		entries []cvssMetric
+		version string
+	}{
+		{m.CvssMetricV31, "3.1"},
+		{m.CvssMetricV30, "3.0"},
+		{m.CvssMetricV40, "4.0"},
+		{m.CvssMetricV2, "2.0"},
+	} {
+		if len(c.entries) > 0 && c.entries[0].CvssData.BaseScore != nil {
+			score := *c.entries[0].CvssData.BaseScore
+			out.CvssBase = &score
+			out.CvssVersion = c.version
+			break
+		}
 	}
-	if len(m.CvssMetricV30) > 0 {
-		return &m.CvssMetricV30[0].CvssData.BaseScore
+
+	if len(m.SsvcV203) > 0 {
+		for _, opt := range m.SsvcV203[0].SsvcData.Options {
+			if v, ok := opt["exploitation"]; ok && out.SsvcExploitation == "" {
+				out.SsvcExploitation = v
+			}
+			if v, ok := opt["automatable"]; ok && out.SsvcAutomatable == "" {
+				out.SsvcAutomatable = v
+			}
+			if v, ok := opt["technicalImpact"]; ok && out.SsvcTechnicalImpact == "" {
+				out.SsvcTechnicalImpact = v
+			}
+		}
 	}
-	return nil
+
+	return out
+}
+
+// extractCvssScore returns just the base score. Retained as the narrow
+// accessor for callers and tests that do not care which scale it came
+// from — check parseMetrics().CvssVersion when they should.
+func extractCvssScore(metricsRaw json.RawMessage) *float64 {
+	return parseMetrics(metricsRaw).CvssBase
+}
+
+// nvdTimeLayouts are the shapes NVD 2.0 actually emits for `published`
+// and `lastModified`. They are NOT RFC3339: the API sends a naive
+// "2026-08-29T18:16:33.473" with no Z and no offset, documented as UTC.
+//
+// This matters more than it looks. Parsing these as RFC3339 fails for
+// EVERY record, and the previous fallback silently substituted
+// time.Now() — so cve_enriched.modified held the ingest time rather
+// than NVD's modification time on all 382,817 rows, and "what changed
+// upstream" was unanswerable while looking perfectly plausible.
+var nvdTimeLayouts = []string{
+	time.RFC3339,
+	"2006-01-02T15:04:05.000",
+	"2006-01-02T15:04:05",
+}
+
+// parseNvdTime parses an NVD timestamp as UTC. ok is false for an empty
+// or unparseable value, so callers can store NULL rather than invent a
+// time — a wrong timestamp is worse than a missing one here.
+func parseNvdTime(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range nvdTimeLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func (r *NvdRunner) getCursor(ctx context.Context) (string, error) {
