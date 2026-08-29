@@ -71,13 +71,22 @@ COMMENT ON COLUMN cve_enriched.ssvc_exploitation IS
 -- matches the COALESCE order exactly, so the version always names the
 -- family the surviving score actually came from.
 --
--- Measured on dev (382,087 NVD rows, pgvector pg16, local disk):
--- 19.1s, and cve_enriched grew 816MB -> 921MB (+13%) leaving 382,087
--- dead tuples. The growth is modest because the new row versions
--- largely reuse free space the existing bloat had already left behind
--- — but the dead tuples are real, so run VACUUM (ANALYZE)
--- cve_enriched afterwards rather than waiting for autovacuum.
--- Expect longer than 19s on Fly's 1GB instance.
+-- Measured, both runs:
+--   dev  (382,087 rows, pgvector pg16, local disk): 19.1s,
+--        816MB -> 921MB (+13%), 382,087 dead tuples.
+--   prod (382,820 rows, Fly mpg 1GB):
+--        735MB -> 1289MB (+75%), 445,277 dead tuples.
+--
+-- The dev figure badly understates the cost: growth depends on how
+-- much reusable free space the existing bloat happens to leave, and
+-- dev had far more of it. Size a maintenance window on the prod
+-- number, not the dev one.
+--
+-- Run VACUUM (ANALYZE) cve_enriched afterwards rather than waiting for
+-- autovacuum — but note it took 57s on prod and starved the feed
+-- ingester's context deadlines while it ran (a burst of "Failed to
+-- process item / context deadline exceeded", self-recovering). Prefer
+-- a quiet window.
 WITH extracted AS (
     SELECT
         cve_id,
