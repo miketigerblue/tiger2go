@@ -40,6 +40,11 @@ jobs:
   security:
     name: Security Scans
     runs-on: ubuntu-latest
+    # security-events lets gosec findings reach the Security tab rather than
+    # dying in the job log when nobody is watching.
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,15 +58,50 @@ jobs:
       # 1. Dependency Analysis (SCA) - Go Native
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1
-        
+
       # 2. Static Analysis (SAST)
+      # No -no-fail: findings still break the build, as before. The SARIF is a
+      # record, not a substitute for the gate.
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
         with:
-          args: ./...
+          args: '-fmt sarif -out gosec.sarif ./...'
+
+      # always(): gosec exits non-zero when it finds something, which is exactly
+      # when the findings are worth publishing.
+      - name: Upload Gosec SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+        # Fork PRs cannot write to Code Scanning; that must not fail the run.
+        continue-on-error: true
 
   # -----------------------------------------------------------------------------
-  # Job 3: Unit & Integration Testing
+  # Job 3: Secret Scanning
+  # -----------------------------------------------------------------------------
+  secrets:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    # gitleaks-action lists PR commits via the API on pull_request events;
+    # workflow-level contents:read alone 403s (learned on tiger-watch #1).
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: a secret is only interesting if it is in the log,
+          # and a shallow clone hides exactly that.
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # -----------------------------------------------------------------------------
+  # Job 4: Unit & Integration Testing
   # -----------------------------------------------------------------------------
   test:
     name: Tests
@@ -97,18 +137,23 @@ jobs:
         run: go test -v -race -cover -p 1 ./...
 
   # -----------------------------------------------------------------------------
-  # Job 4: Container Security (Trivy)
+  # Job 5: Container Security (Trivy)
   # -----------------------------------------------------------------------------
   container-security:
     name: Container Scan
     runs-on: ubuntu-latest
-    needs: [quality, security, test] # Only build if code is good
+    needs: [quality, security, secrets, test] # Only build if code is good
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v7
 
       - name: Build Docker Image
         run: docker build -t tiger2go:${{ github.sha }} .
 
+      # Two Trivy passes over one image, deliberately. This one is the gate:
+      # table output, non-zero exit, breaks the build.
       - name: Run Trivy Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -118,6 +163,28 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+
+      # This one is the record: same findings as SARIF, exit-code 0 so it
+      # always produces a file even when the gate above has already failed.
+      - name: Trivy SARIF Report
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'tiger2go:${{ github.sha }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+        continue-on-error: true
 
       - name: Generate SBOM (SPDX-JSON)
         # SPDX-JSON format so tiger-watch's /sbom/upload parser accepts it
