@@ -54,6 +54,13 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version: '1.26'
+          # govulncheck-action sets Go up again internally and restores the
+          # same module cache, and the second extraction lands on files the
+          # first already wrote — 11 "Cannot open: File exists" failure
+          # annotations per run, non-fatal but they make every green run look
+          # broken. Only one of the two can own the cache; this job is short,
+          # so let the nested one have it.
+          cache: false
 
       # 1. Dependency Analysis (SCA) - Go Native
       - name: Run govulncheck
