@@ -9,6 +9,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Widened NVD capture — `internal/cve/nvd.go`, migration `20260829200000_nvd_capture_expansion.sql`
+- `NvdCveItem` parsed 5 of the 16 fields NVD 2.0 ships. Now also captures
+  `published`, `vulnStatus`, `sourceIdentifier`, `cveTags` and
+  `references` — each promoted to an indexed column on `cve_enriched`
+  (`published`, `vuln_status`, `source_identifier`, `cve_tags text[]`)
+  except references, trimmed to `url`+`tags` and kept in the JSON blob.
+  - **`published`**: `modified` is `lastModified`, so "what is new this
+    week" was unanswerable — a 2015 CVE revised yesterday looked
+    identical to one disclosed yesterday.
+  - **`vuln_status`**: 18,162 `Rejected` (withdrawn) CVEs sat
+    indistinguishable from live findings, detectable only by
+    string-matching description prose. `Deferred` matters too: NVD has
+    abandoned analysis on those, so they never gain `configurations` and
+    can never match an SBOM — "not affected" and "never analysed" were
+    the same answer.
+  - **`references`**: previously dropped on the grounds that the app
+    sources references from OSV. OSV covers package-ecosystem advisories
+    and holds a record for only **8.2 %** of the CVEs in this lake,
+    leaving 351,393 with no link to an advisory, patch or exploit
+    anywhere. Dropping the per-link `source` keeps 72 % of the bytes.
+  - `affected` deliberately **not** captured: CNA free text, overwhelmingly
+    `{"vendor":"n/a","product":"n/a"}`, and only 17 of 2,000 sampled
+    records carried it without `configurations`.
+- **CVSS v4.0 and v2 fallback**, with a new `cvss_version` column recording
+  which scale a score came from — a v2 7.5 is not a v3 7.5. Preference is
+  v3.1 → v3.0 → v4.0 → v2.0 (v4.0 below v3.x while NVD dual-publishes, to
+  stop scores jumping between adjacent CVEs). `extractCvssScore` read only
+  v3.1/v3.0 while the blob already carried the rest, leaving **76,564 rows
+  (20 %)** with a score available and `cvss_base` NULL.
+- **CISA SSVC v2.0.3 decision points** extracted to `ssvc_exploitation` /
+  `ssvc_automatable` / `ssvc_technical_impact`. Present on **172,143 rows
+  (45 %)** and never read, though stored all along inside the metrics
+  blob. 1,662 say `exploitation=active`, against 1,685 rows in the
+  separately-ingested KEV catalogue — a corroborating exploitation signal
+  from a different direction. Partial index on `= 'active'`.
+- Both of the above backfill in full from already-stored data, so the
+  migration needs no refetch and no cursor reset.
+- 20 new unit tests plus `TestNvdRunner_WidenedCapture`, an end-to-end
+  integration test asserting every new column through the real save path.
+
+### Fixed
+
+#### NVD timestamps parsed as RFC3339, silently substituting ingest time — `internal/cve/nvd.go`
+- NVD 2.0 sends **naive** timestamps (`2026-08-29T18:16:33.473` — no `Z`,
+  no offset, documented as UTC). `time.Parse(time.RFC3339, …)` rejects
+  every one of them, and the error path substituted `time.Now()`. So
+  `cve_enriched.modified` held the **ingest** time rather than NVD's
+  modification time on **all 382,820 production rows** — verified
+  independently on dev, where 0 of 382,087 rows had a correct value.
+  Nothing surfaced it because an ingest timestamp looks entirely
+  plausible in that column, and any query asking "what changed upstream"
+  was quietly answering "what did we last write".
+- New `parseNvdTime` tries RFC3339, then `2006-01-02T15:04:05.000`, then
+  `2006-01-02T15:04:05`, all as UTC. Unparseable values now log a warning
+  rather than failing silently, and `published` is left NULL rather than
+  defaulted — a fabricated publication date would corrupt every
+  "new this week" query built on it.
+- The migration repairs history from `json->>'lastModified'`, which held
+  the true value all along.
+
+#### Migration cost, measured in both environments
+| | dev (pgvector pg16, local disk) | prod (Fly mpg, 1 GB) |
+|---|---|---|
+| Rows | 382,087 | 382,820 |
+| Duration | 19.1 s | — |
+| `cve_enriched` | 816 MB → 921 MB (+13 %) | 735 MB → 1289 MB (+75 %) |
+| Dead tuples left | 382,087 | 445,277 |
+| `cvss_base` NULL | 106,107 → 28,014 | 99,009 → 22,445 |
+| `modified` correct | 0 → 382,087 | 0 → 382,820 |
+
+- Growth depends on how much reusable free space the existing bloat
+  happens to leave, and dev had far more of it — size a maintenance
+  window on the prod figure, not the dev one. The follow-up
+  `VACUUM (ANALYZE)` took 57 s on prod and starved the feed ingester's
+  context deadlines while running (a self-recovering burst of
+  `Failed to process item / context deadline exceeded`); prefer a quiet
+  window.
+
 ---
 
 ## [1.4.0] - 2026-05-17

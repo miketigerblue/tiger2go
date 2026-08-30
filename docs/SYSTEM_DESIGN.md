@@ -192,7 +192,7 @@ The data lake has three tiers, with TigerFetch writing only the first:
 |---|---|---|---|
 | `archive` | Append-only | `ON CONFLICT (guid, feed_url) DO NOTHING` | ~700 items/cycle |
 | `current` | Last-write-wins | `ON CONFLICT (guid, feed_url) DO UPDATE` | bounded by unique items |
-| `cve_enriched` | Upsert | `ON CONFLICT (cve_id, source) DO UPDATE` | ~350k (NVD); KEV moved to `cve_kev` |
+| `cve_enriched` | Upsert | `ON CONFLICT (cve_id, source) DO UPDATE` — every promoted column is in the `DO UPDATE` set | ~383k (NVD); KEV moved to `cve_kev`, though 1.7k legacy `source='CISA-KEV'` rows remain |
 | `cve_kev` | Upsert | `ON CONFLICT (cve_id) DO UPDATE`; `withdrawn_at` flag for catalog removals | ~1.6k active |
 | `cve_enriched_history` | Insert (via trigger on `cve_enriched`) | One row per actual state-change (no no-op UPDATEs) | grows with NVD churn |
 | `epss_daily` | Bulk load via `COPY FROM` | Date-existence check before run | ~300k/day, partitioned monthly |
@@ -272,12 +272,33 @@ Per-pipeline detail below.
   NVD API v2.0      NvdRunner             Batch Save         PostgreSQL
   ------------      ---------             ----------         ----------
   Paginated   ---->  120-day windows  -->  pgx.Batch()  -->  cve_enriched
-  JSON               2000 results/page     Extract CVSS      (source='NVD')
-                     cursor in             V3.1 > V3.0
-                     ingest_state          base score
+  JSON               2000 results/page     parseMetrics      (source='NVD')
+                     cursor in             parseNvdTime            +
+                     ingest_state          flattenCpe        cve_cpe rows
 ```
 
 **Window Strategy:** NVD limits queries to 120-day ranges. The runner splits the gap between the cursor and now into sequential 120-day windows, advancing the cursor after each.
+
+**Captured fields.** NVD 2.0 ships 16 top-level fields per CVE. `NvdCveItem` declares what is kept; anything undeclared is dropped at unmarshal.
+
+| Field | Fate |
+|---|---|
+| `id`, `lastModified`, `published`, `vulnStatus`, `sourceIdentifier` | Stored, the last four also as columns |
+| `metrics` | Stored verbatim; `parseMetrics` promotes `cvss_base` + `cvss_version` + three `ssvc_*` columns |
+| `descriptions` | English only (`englishOnly`) — NVD ships es/fr translations that would double stored prose |
+| `weaknesses` | Stored verbatim (CWE mappings) |
+| `cveTags` | Flattened to `cve_tags text[]`, carries `disputed` |
+| `references` | Trimmed to `url`+`tags` (`trimReferences`); the per-link `source` is dropped, keeping 72 % of the bytes |
+| `configurations` | Exploded into `cve_cpe` rows, then cleared — the rows are what queries need, and the blob would roughly triple the column |
+| `affected` | **Dropped.** CNA free text, overwhelmingly `{"vendor":"n/a","product":"n/a"}`; only 17 of 2,000 sampled records carried it without `configurations` |
+| `cisaExploitAdd`, `cisaActionDue`, `cisaRequiredAction`, `cisaVulnerabilityName` | **Dropped** — redundant with the dedicated CISA-KEV ingest |
+| `evaluatorComment` / `Solution` / `Impact`, `vendorComments` | **Dropped** — present on <1 % of records |
+
+**CVSS selection.** `parseMetrics` prefers v3.1 → v3.0 → **v4.0 → v2.0**, recording the winner in `cvss_version`. v4.0 sits below v3.x while NVD dual-publishes, so scores do not jump between adjacent CVEs; v2.0 is last and never silent, because a v2 base score is not comparable to a v3 one.
+
+**SSVC.** CISA's Stakeholder-Specific Vulnerability Categorization (`ssvcV203`) arrives inside `metrics` on ~45 % of records. `exploitation` / `automatable` / `technicalImpact` are promoted to columns; `ssvc_exploitation = 'active'` is an exploitation assertion independent of the KEV catalogue and carries a partial index.
+
+**Timestamps.** NVD sends naive strings (`2026-08-29T18:16:33.473` — no `Z`, no offset, documented UTC), *not* RFC3339. `parseNvdTime` handles all three shapes as UTC. Parsing these with `time.RFC3339` fails on every record; the pre-2026-08-29 code then fell back to `time.Now()`, so `modified` held the ingest time on every row in the table.
 
 **Rate Limiting:**
 | Mode | Rate | Delay Between Pages |
@@ -1030,7 +1051,7 @@ go 1.26.0, toolchain go1.26.1
 | Dimension | Value |
 |---|---|
 | RSS/Atom feeds | 22 sources, ~700 items per cycle |
-| NVD CVEs | ~351k (120-day sliding window of `cve_enriched`) |
+| NVD CVEs | ~383k (120-day sliding window of `cve_enriched`) |
 | CISA KEV | ~1,590 active in `cve_kev` |
 | EPSS records | ~300k per daily snapshot; ~11M across `epss_daily_y2026m*` partitions |
 | OSV advisories | ~264k across 11 ecosystems |
