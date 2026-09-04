@@ -66,13 +66,18 @@ func (w WebhookSender) Send(ctx context.Context, sleepers []SleeperCVE) error {
 
 // --- Slack Block Kit payload ---
 
-func formatCvssBadge(score *float64, severity string) string {
+// formatCvssBadge renders the score with its version family. The colour
+// bands are the family's own: v2.0 tops out at HIGH (7.0+), so a v2 score
+// is never painted CRITICAL, and anything that is not v3.x says so in the
+// badge because a bare "CVSS 9.3" reads as v3 to every analyst.
+func formatCvssBadge(score *float64, severity, version string) string {
 	if score == nil {
 		return "CVSS: _n/a_"
 	}
+	isV2 := version == "2.0"
 	var emoji string
 	switch {
-	case *score >= 9.0:
+	case *score >= 9.0 && !isV2:
 		emoji = ":red_circle:"
 	case *score >= 7.0:
 		emoji = ":large_orange_circle:"
@@ -81,10 +86,30 @@ func formatCvssBadge(score *float64, severity string) string {
 	default:
 		emoji = ":large_green_circle:"
 	}
+	var tags []string
 	if severity != "" {
-		return fmt.Sprintf("%s CVSS *%.1f* (%s)", emoji, *score, severity)
+		tags = append(tags, severity)
+	}
+	if version != "" && !strings.HasPrefix(version, "3.") {
+		tags = append(tags, "v"+version)
+	}
+	if len(tags) > 0 {
+		return fmt.Sprintf("%s CVSS *%.1f* (%s)", emoji, *score, strings.Join(tags, ", "))
 	}
 	return fmt.Sprintf("%s CVSS *%.1f*", emoji, *score)
+}
+
+// formatSsvc surfaces CISA's exploitation assertion next to the score —
+// it is the one field on the row that speaks to the alert's premise.
+func formatSsvc(exploitation string) string {
+	switch exploitation {
+	case "active":
+		return " | :rotating_light: CISA SSVC: *active exploitation*"
+	case "poc":
+		return " | :test_tube: CISA SSVC: public PoC"
+	default:
+		return ""
+	}
 }
 
 func formatCWE(cwe string) string {
@@ -134,10 +159,11 @@ func buildSlackPayload(sleepers []SleeperCVE) ([]byte, error) {
 		nvdLink := fmt.Sprintf("https://nvd.nist.gov/vuln/detail/%s", s.CVEID)
 
 		// Line 1: CVE ID (linked) + CVSS badge + CWE
-		line1 := fmt.Sprintf("*<%s|%s>*  %s%s",
+		line1 := fmt.Sprintf("*<%s|%s>*  %s%s%s",
 			nvdLink, s.CVEID,
-			formatCvssBadge(s.CvssScore, s.CvssSeverity),
+			formatCvssBadge(s.CvssScore, s.CvssSeverity, s.CvssVersion),
 			formatCWE(s.CWE),
+			formatSsvc(s.SsvcExploitation),
 		)
 
 		// Line 2: EPSS trajectory
@@ -198,18 +224,21 @@ type genericPayload struct {
 }
 
 type genericCVE struct {
-	CVEID        string   `json:"cve_id"`
-	EpssBefore   float64  `json:"epss_before"`
-	EpssNow      float64  `json:"epss_now"`
-	Delta        float64  `json:"delta"`
-	PctChange    float64  `json:"pct_change"`
-	Percentile   float64  `json:"percentile"`
-	DateBefore   string   `json:"date_before"`
-	DateNow      string   `json:"date_now"`
-	Description  string   `json:"description"`
-	CvssScore    *float64 `json:"cvss_score"`
-	CvssSeverity string   `json:"cvss_severity"`
-	CWE          string   `json:"cwe"`
+	CVEID            string   `json:"cve_id"`
+	EpssBefore       float64  `json:"epss_before"`
+	EpssNow          float64  `json:"epss_now"`
+	Delta            float64  `json:"delta"`
+	PctChange        float64  `json:"pct_change"`
+	Percentile       float64  `json:"percentile"`
+	DateBefore       string   `json:"date_before"`
+	DateNow          string   `json:"date_now"`
+	Description      string   `json:"description"`
+	CvssScore        *float64 `json:"cvss_score"`
+	CvssVersion      string   `json:"cvss_version"`
+	CvssSeverity     string   `json:"cvss_severity"`
+	CWE              string   `json:"cwe"`
+	SsvcExploitation string   `json:"ssvc_exploitation"`
+	Published        string   `json:"published"`
 }
 
 func buildGenericPayload(sleepers []SleeperCVE) ([]byte, error) {

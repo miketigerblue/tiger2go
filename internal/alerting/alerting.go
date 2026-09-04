@@ -14,18 +14,28 @@ import (
 
 // SleeperCVE represents a CVE that crossed a significant EPSS threshold.
 type SleeperCVE struct {
-	CVEID        string
-	EpssBefore   float64
-	EpssNow      float64
-	Delta        float64
-	PctChange    float64
-	Percentile   float64
-	DateBefore   string
-	DateNow      string
-	Description  string
-	CvssScore    *float64
+	CVEID       string
+	EpssBefore  float64
+	EpssNow     float64
+	Delta       float64
+	PctChange   float64
+	Percentile  float64
+	DateBefore  string
+	DateNow     string
+	Description string
+	CvssScore   *float64
+	// CvssVersion names the metric family CvssScore came from ("3.1",
+	// "3.0", "4.0" or "2.0"). cve_enriched falls back to v2/v4 where NVD
+	// never issued a v3 score, and the scales are not comparable — v2 has
+	// no CRITICAL band — so every rendering of CvssScore must carry it.
+	CvssVersion  string
 	CvssSeverity string
 	CWE          string
+	// SsvcExploitation is CISA's SSVC decision point: "" / none / poc / active.
+	SsvcExploitation string
+	// Published is NVD's first-publication date (YYYY-MM-DD), "" when the
+	// lake has not captured it for this CVE yet.
+	Published string
 }
 
 // Runner detects sleeper CVEs and sends webhook notifications.
@@ -142,28 +152,33 @@ func (r *Runner) detect(ctx context.Context, lookbackDays int) ([]SleeperCVE, er
 			n.pct AS percentile,
 			(SELECT d FROM baseline_date)::text AS date_before,
 			(SELECT d FROM latest_date)::text AS date_now,
+			COALESCE(c.json->'descriptions'->0->>'value', '') AS description,
+			c.cvss_base::float8 AS cvss_score,
+			COALESCE(c.cvss_version, '') AS cvss_version,
+			-- baseSeverity lives in the family cvss_base was taken from.
+			-- v3.x and v4.0 keep it inside cvssData; v2.0 keeps it beside it.
 			COALESCE(
-				(SELECT json->'descriptions'->0->>'value'
-				 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1),
-				''
-			) AS description,
-			(SELECT cvss_base::float8
-			 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1
-			) AS cvss_score,
-			COALESCE(
-				(SELECT json->'metrics'->'cvssMetricV31'->0->'cvssData'->>'baseSeverity'
-				 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1),
+				CASE c.cvss_version
+					WHEN '3.1' THEN c.json->'metrics'->'cvssMetricV31'->0->'cvssData'->>'baseSeverity'
+					WHEN '3.0' THEN c.json->'metrics'->'cvssMetricV30'->0->'cvssData'->>'baseSeverity'
+					WHEN '4.0' THEN c.json->'metrics'->'cvssMetricV40'->0->'cvssData'->>'baseSeverity'
+					WHEN '2.0' THEN c.json->'metrics'->'cvssMetricV2'->0->>'baseSeverity'
+				END,
 				''
 			) AS cvss_severity,
-			COALESCE(
-				(SELECT json->'weaknesses'->0->'description'->0->>'value'
-				 FROM cve_enriched WHERE cve_id = n.cve_id LIMIT 1),
-				''
-			) AS cwe
+			COALESCE(c.json->'weaknesses'->0->'description'->0->>'value', '') AS cwe,
+			COALESCE(c.ssvc_exploitation, '') AS ssvc_exploitation,
+			COALESCE(to_char(c.published AT TIME ZONE 'UTC', 'YYYY-MM-DD'), '') AS published
 		FROM now_scores n
 		JOIN before_scores b ON n.cve_id = b.cve_id
+		-- source = 'NVD' is load-bearing: the table also holds legacy
+		-- CISA-KEV rows under the same cve_id, with no metrics at all.
+		LEFT JOIN cve_enriched c ON c.cve_id = n.cve_id AND c.source = 'NVD'
 		WHERE b.epss < 0.10
 		  AND n.epss >= 0.50
+		  -- NVD-withdrawn IDs are noise however their EPSS moved.
+		  -- IS DISTINCT FROM keeps rows whose status is not captured yet.
+		  AND c.vuln_status IS DISTINCT FROM 'Rejected'
 		ORDER BY n.epss - b.epss DESC
 		LIMIT 50
 	`
@@ -181,7 +196,8 @@ func (r *Runner) detect(ctx context.Context, lookbackDays int) ([]SleeperCVE, er
 			&s.CVEID, &s.EpssBefore, &s.EpssNow, &s.Delta,
 			&s.PctChange, &s.Percentile,
 			&s.DateBefore, &s.DateNow, &s.Description,
-			&s.CvssScore, &s.CvssSeverity, &s.CWE,
+			&s.CvssScore, &s.CvssVersion, &s.CvssSeverity, &s.CWE,
+			&s.SsvcExploitation, &s.Published,
 		); err != nil {
 			return nil, fmt.Errorf("scan sleeper row: %w", err)
 		}
