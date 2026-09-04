@@ -71,25 +71,30 @@ func TestKevRunner_Integration(t *testing.T) {
 	err = runner.Run(ctx)
 	require.NoError(t, err)
 
-	// 4. Verify DB — including the previously-dropped fields.
+	// 4. Verify DB — cve_kev is the only table the KEV runner writes now.
+	// The legacy source='CISA-KEV' mirror row in cve_enriched must NOT
+	// appear: a stray non-NVD row there breaks any consumer that reads
+	// cve_enriched without a source filter.
 	var count int
 	err = pool.QueryRow(ctx, "SELECT count(*) FROM cve_enriched WHERE cve_id = 'CVE-TEST-KEV-001' AND source = 'CISA-KEV'").Scan(&count)
 	require.NoError(t, err)
-	assert.Equal(t, 1, count)
+	assert.Equal(t, 0, count)
 
 	// Round-trip check: knownRansomwareCampaignUse and cwes must be
-	// preserved in the stored json. Before the v1.3.1 fix these were
-	// silently dropped because the Go struct lacked the fields.
+	// preserved both as typed columns and in the raw blob. Before the
+	// v1.3.1 fix these were silently dropped because the Go struct
+	// lacked the fields.
 	var kr string
+	var ransomware bool
 	var cwes []string
 	err = pool.QueryRow(ctx,
-		`SELECT json ->> 'knownRansomwareCampaignUse',
-		         ARRAY(SELECT jsonb_array_elements_text(json -> 'cwes'))
-		   FROM cve_enriched
-		  WHERE cve_id = 'CVE-TEST-KEV-001' AND source = 'CISA-KEV'`,
-	).Scan(&kr, &cwes)
+		`SELECT raw ->> 'knownRansomwareCampaignUse', known_ransomware_use, cwes
+		   FROM cve_kev
+		  WHERE cve_id = 'CVE-TEST-KEV-001'`,
+	).Scan(&kr, &ransomware, &cwes)
 	require.NoError(t, err)
 	assert.Equal(t, "Known", kr)
+	assert.True(t, ransomware)
 	assert.ElementsMatch(t, []string{"CWE-77", "CWE-78"}, cwes)
 
 	// 5. Verify State
@@ -101,5 +106,6 @@ func TestKevRunner_Integration(t *testing.T) {
 	assert.Equal(t, expected, cursor)
 
 	// Clean up
+	_, _ = pool.Exec(ctx, "DELETE FROM cve_kev WHERE cve_id = 'CVE-TEST-KEV-001'")
 	_, _ = pool.Exec(ctx, "DELETE FROM cve_enriched WHERE cve_id = 'CVE-TEST-KEV-001'")
 }
