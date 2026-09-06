@@ -53,6 +53,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+#### Consumers of the widened capture — `internal/alerting/`, `internal/osv/`, `internal/cve/kev.go`, `grafana/`
+Follow-through on the capture expansion above: `cvss_base` is now a
+mixed-version column, `vuln_status` / `published` are forward-only, and the
+legacy `source='CISA-KEV'` rows in `cve_enriched` are a trap for any read
+without a source filter. Every in-repo reader is brought in line.
+- **Alerter** (`alerting.go`): the sleeper-CVE detection read
+  `cve_enriched` by `cve_id` alone (so could land on a KEV mirror row with
+  no metrics) and pulled `baseSeverity` from `cvssMetricV31` only. It now
+  joins `source='NVD'`, reads severity from the family named by
+  `cvss_version` (v2 keeps `baseSeverity` beside `cvssData`, not inside
+  it), excludes Rejected records, and carries `cvss_version`,
+  `ssvc_exploitation` and `published` into both Slack and generic webhook
+  payloads. A v2 score is never rendered as CRITICAL; SSVC `active` /
+  `poc` get their own badge.
+- **OSV `cvss_v3`** (`osv.go`, migration `20260904120000`): was NULL on
+  every row because the feed rarely carries a score. The upsert now falls
+  back to the aliased CVE's NVD v3.x score (`cvss_version` 3.0/3.1 only —
+  v2/v4 are never banded as v3) and a migration backfills existing rows.
+- **KEV mirror rows retired** (`kev.go`): the runner no longer writes a
+  `source='CISA-KEV'` row into `cve_enriched`; `cve_kev` has been the
+  typed home since 20260511. Existing rows are left in place.
+  `materialize_epss_to_cve_enriched()` is redefined NVD-only (migration
+  `20260904120300`) so they stop receiving nightly scores.
+- **Legacy rejects marked** (migration `20260904120100`): `vuln_status`
+  is set to `Rejected` where the stored description starts `** REJECT **`
+  and no status was captured, so `IS DISTINCT FROM 'Rejected'` predicates
+  bite today instead of after a full re-fetch.
+- **History trigger** (migration `20260904120200`): the no-op guard and
+  `changed_fields` on `cve_enriched_history` now cover all twelve
+  promoted columns (`__vuln_status__`, `__ssvc_exploitation__`,
+  `__cvss_version__`, …), and the table gains `prev_vuln_status`,
+  `prev_ssvc_exploitation`, `prev_cvss_version`. Previously a
+  Analyzed → Rejected transition or an SSVC change left no audit row.
+- **Grafana threat-intelligence dashboard**: Critical / danger-zone /
+  latest-critical panels exclude v2 from the ≥ 9 band and exclude
+  Rejected; CVSS distribution is one series per `cvss_version`; the 30-day
+  lanes bucket by `published` (falling back to `modified`); tables show
+  `cvss_version` and an SSVC pill; KEV panels read `cve_kev`. The
+  `CVEs Without CVSS (24h)` stat on the overview dashboard is re-baselined
+  (400 / 800) — post-expansion it counts records NVD has not analysed yet.
+- `docs/SYSTEM_DESIGN.md` and `MBSE.md` ledgers brought current
+  (29 migrations, KEV pipeline → `cve_kev`, OSV CVSS fallback).
+
 #### NVD timestamps parsed as RFC3339, silently substituting ingest time — `internal/cve/nvd.go`
 - NVD 2.0 sends **naive** timestamps (`2026-08-29T18:16:33.473` — no `Z`,
   no offset, documented as UTC). `time.Parse(time.RFC3339, …)` rejects
