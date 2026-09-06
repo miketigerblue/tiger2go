@@ -295,6 +295,11 @@ def cmd_cve(args: argparse.Namespace) -> int:
         cols = args.columns or [
             "cve_id",
             "cvss_base",
+            "cvss_version",
+            "cvss_severity",
+            "ssvc_exploitation",
+            "vuln_status",
+            "published",
             "epss",
             "epss_percentile",
             "in_kev",
@@ -307,11 +312,15 @@ def cmd_cve(args: argparse.Namespace) -> int:
         return 0
 
     if args.subaction == "patchlist":
-        # Prioritized list by (in_kev desc, epss desc, cvss desc)
+        # Prioritized list by (in_kev desc, epss desc, cvss desc).
+        # cvss_base is mixed-version — cvss_version/cvss_severity are
+        # selected alongside so a v2 score is not read as a v3 one.
+        # Rejected CVEs are dropped (NULL-safe: most rows carry no status).
         query: Dict[str, str] = {
             "order": "epss.desc,cvss_base.desc",
             "select": args.select
-            or "cve_id,epss,cvss_base,in_kev,due_date,required_action,mention_count,last_seen,description_en",
+            or "cve_id,epss,cvss_base,cvss_version,cvss_severity,ssvc_exploitation,vuln_status,published,in_kev,due_date,required_action,mention_count,last_seen,description_en",
+            "or": "(vuln_status.is.null,vuln_status.neq.Rejected)",
         }
 
         if args.in_kev:
