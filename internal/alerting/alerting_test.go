@@ -54,6 +54,46 @@ func TestBuildSlackPayload(t *testing.T) {
 	assert.Contains(t, s, "SPIP plugin RCE")
 }
 
+func TestFormatCvssBadge_VersionAware(t *testing.T) {
+	// v3.x: family is implicit, colour bands as before.
+	assert.Equal(t, ":red_circle: CVSS *9.8* (CRITICAL)", formatCvssBadge(ptr(9.8), "CRITICAL", "3.1"))
+	assert.Equal(t, ":large_orange_circle: CVSS *7.5* (HIGH)", formatCvssBadge(ptr(7.5), "HIGH", "3.0"))
+
+	// v2.0 has no CRITICAL band: a 10.0 is HIGH, painted orange, and the
+	// badge names the family so nobody reads it as a v3 score.
+	assert.Equal(t, ":large_orange_circle: CVSS *10.0* (HIGH, v2.0)", formatCvssBadge(ptr(10.0), "HIGH", "2.0"))
+
+	// v4.0 keeps the v3-style bands but is labelled.
+	assert.Equal(t, ":red_circle: CVSS *9.3* (CRITICAL, v4.0)", formatCvssBadge(ptr(9.3), "CRITICAL", "4.0"))
+
+	// Rows enriched before cvss_version existed: unchanged rendering.
+	assert.Equal(t, ":red_circle: CVSS *9.8*", formatCvssBadge(ptr(9.8), "", ""))
+	assert.Equal(t, "CVSS: _n/a_", formatCvssBadge(nil, "", ""))
+}
+
+func TestBuildSlackPayload_SsvcAndVersion(t *testing.T) {
+	sleepers := []SleeperCVE{
+		{
+			CVEID:            "CVE-2010-0001",
+			EpssBefore:       0.02,
+			EpssNow:          0.61,
+			DateBefore:       "2026-03-04",
+			DateNow:          "2026-04-11",
+			CvssScore:        ptr(6.8),
+			CvssVersion:      "2.0",
+			CvssSeverity:     "MEDIUM",
+			SsvcExploitation: "active",
+		},
+	}
+
+	body, err := buildSlackPayload(sleepers)
+	require.NoError(t, err)
+	s := string(body)
+	assert.Contains(t, s, "CVSS *6.8* (MEDIUM, v2.0)")
+	assert.Contains(t, s, "CISA SSVC: *active exploitation*")
+	assert.NotContains(t, s, ":red_circle:")
+}
+
 func TestBuildSlackPayload_NoCvss(t *testing.T) {
 	sleepers := []SleeperCVE{
 		{
@@ -79,10 +119,14 @@ func TestBuildGenericPayload(t *testing.T) {
 			Delta:      0.8357,
 		},
 		{
-			CVEID:      "CVE-2025-50286",
-			EpssBefore: 0.009,
-			EpssNow:    0.584,
-			Delta:      0.575,
+			CVEID:            "CVE-2025-50286",
+			EpssBefore:       0.009,
+			EpssNow:          0.584,
+			Delta:            0.575,
+			CvssScore:        ptr(7.2),
+			CvssVersion:      "4.0",
+			SsvcExploitation: "poc",
+			Published:        "2025-06-01",
 		},
 	}
 
@@ -95,6 +139,13 @@ func TestBuildGenericPayload(t *testing.T) {
 	assert.Equal(t, "sleeper_cve_alert", payload.Event)
 	assert.Equal(t, 2, payload.Count)
 	assert.Equal(t, "CVE-2025-71243", payload.Sleepers[0].CVEID)
+
+	// The generic consumer gets the family and the SSVC signal verbatim,
+	// so it can apply its own bands rather than assuming v3.
+	assert.Equal(t, "4.0", payload.Sleepers[1].CvssVersion)
+	assert.Equal(t, "poc", payload.Sleepers[1].SsvcExploitation)
+	assert.Equal(t, "2025-06-01", payload.Sleepers[1].Published)
+	assert.Contains(t, string(body), `"cvss_version":"4.0"`)
 }
 
 func TestWebhookSender_Send(t *testing.T) {

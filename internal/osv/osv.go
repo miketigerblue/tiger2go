@@ -161,7 +161,20 @@ func (r *Runner) persistBundle(ctx context.Context, ecosystem string, zr *zip.Re
 			published, modified, withdrawn, raw, last_seen_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
-			$7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12,
+			$7, $8, $9::jsonb, $10::jsonb, $11::jsonb,
+			-- Most OSV severity entries carry only the vector, so $12 is
+			-- usually NULL. Resolve the score through the advisory's CVE
+			-- aliases instead, from the v3.x family only: cvss_base can be
+			-- a v2.0 or v4.0 score and this column is named cvss_v3.
+			COALESCE($12, (
+				SELECT c.cvss_base
+				FROM cve_enriched c
+				WHERE c.cve_id = ANY($7::text[])
+				  AND c.source = 'NVD'
+				  AND c.cvss_version IN ('3.1', '3.0')
+				ORDER BY c.cvss_version DESC, c.cvss_base DESC
+				LIMIT 1
+			)),
 			$13, $14, $15, $16::jsonb, now()
 		)
 		ON CONFLICT (id) DO UPDATE SET
@@ -266,9 +279,10 @@ func extractPackageNames(v Vulnerability) []string {
 //
 // In practice most OSV severity entries (notably PyPI advisories sourced
 // from GHSA) publish ONLY the vector with no trailing numeric — the consumer
-// is expected to compute the score from the vector. Until we add a proper
-// CVSS-vector evaluator, those advisories will leave cvss_v3 NULL; the full
-// vector remains queryable via the `severity` jsonb column.
+// is expected to compute the score from the vector. For those this returns
+// nil and the upsert resolves cvss_v3 through the advisory's CVE aliases in
+// cve_enriched (v3.x family only); the full vector remains queryable via
+// the `severity` jsonb column.
 func extractCvssV3(sev []Severity) *float64 {
 	for _, s := range sev {
 		if !strings.EqualFold(s.Type, "CVSS_V3") {

@@ -129,10 +129,10 @@ The codebase follows the **Standard Go Project Layout** with clean separation of
 | `internal/db/` | Connection pooling (`pgxpool`, 25 max / 2 min conns) and schema migrations via Goose |
 | `internal/ingestor/` | Generic RSS/Atom pipeline — fetch → sanitise (bluemonday UGC policy) → transactional dual-write to `archive` (append-only) + `current` (upsert) |
 | `internal/cve/nvd.go` | NVD v2.0 API client — 120-day windowed pagination, exponential backoff on 429/503, batched `pgx.Batch` writes to `cve_enriched` + `cve_cpe`. CVSS score extraction across v3.1/v3.0/v4.0/v2.0 with the source scale recorded; CISA SSVC decision points, `published`/`vulnStatus`/`sourceIdentifier`/`cveTags` and trimmed `references` promoted to columns. Note NVD timestamps are naive, not RFC3339 — see `parseNvdTime` |
-| `internal/cve/kev.go` | CISA KEV catalog client — full-catalog fetch, cursor-based skip logic, batch upsert to `cve_enriched` |
+| `internal/cve/kev.go` | CISA KEV catalog client — full-catalog fetch, cursor-based skip logic, batch upsert to `cve_kev` (the legacy `cve_enriched` `source='CISA-KEV'` mirror row is no longer written) |
 | `internal/cve/epss.go` | FIRST.org EPSS client — paginated JSON API, auto-partition creation (monthly), high-throughput `COPY FROM` bulk insert (~300k rows) |
 | `internal/metrics/` | Prometheus metric definitions (`tigerfetch_*`), pgxpool stats collector, HTTP request instrumentation middleware |
-| `migrations/` | 10 Goose-compatible SQL migrations covering schema evolution from initial tables through partitioned EPSS and QA views |
+| `migrations/` | 29 Goose-compatible SQL migrations covering schema evolution from initial tables through partitioned EPSS, QA views, the widened NVD capture and its change-capture trigger |
 
 **Concurrency model:** The main function launches four worker types (RSS ingestor, NVD, KEV, EPSS) as independent goroutines. Each worker runs in an infinite loop: execute its `Run()` function, then sleep for its configured poll interval before repeating. The RSS/Atom ingestor fetches feeds concurrently, bounded by a semaphore (max 5 concurrent fetches) to balance throughput with upstream politeness. Graceful shutdown is coordinated via context cancellation and OS signal handling (`SIGINT`/`SIGTERM`).
 
@@ -158,7 +158,7 @@ The codebase follows the **Standard Go Project Layout** with clean separation of
 | `archive` | Immutable append-only record of every feed item ever seen | UUID PK, unique GUID index, text arrays for categories |
 | `current` | Latest state of each feed item (upsert on GUID) | Same schema as archive, upsert semantics |
 | `cve_raw` | Raw upstream CVE payloads (MITRE source) | Composite PK `(cve_id, source)`, JSONB storage |
-| `cve_enriched` | Enriched CVE records (NVD, CISA-KEV) with indexed scores | CVSS base (+ `cvss_version`) & EPSS numerics, `published` / `vuln_status` / `source_identifier` / `cve_tags` / three `ssvc_*` columns, JSONB full record. `modified` is NVD's `lastModified` |
+| `cve_enriched` | Enriched CVE records (NVD; legacy CISA-KEV mirror rows are unwritten remnants — filter `source = 'NVD'`) with indexed scores | CVSS base (+ `cvss_version`) & EPSS numerics, `published` / `vuln_status` / `source_identifier` / `cve_tags` / three `ssvc_*` columns, JSONB full record. `modified` is NVD's `lastModified` |
 | `epss_daily` | Daily EPSS score history (partitioned by month) | ~300k rows/day, `COPY FROM` optimised |
 | `ingest_state` | Cursor/checkpoint per data source | Enables idempotent, resumable ingestion |
 

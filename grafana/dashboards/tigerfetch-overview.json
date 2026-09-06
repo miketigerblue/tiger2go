@@ -982,6 +982,7 @@
     {
       "type": "stat",
       "title": "CVEs Without CVSS (24h)",
+      "description": "CVEs saved in the last 24h with no score in any CVSS family (v3.1/v3.0/v4.0/v2.0). Since the widened capture this is almost entirely records NVD has not analysed yet (vuln_status Received / Awaiting Analysis / Undergoing Analysis), so a few hundred a day is normal. Sustained values above the thresholds point at an NVD analysis backlog or a metrics-parsing regression.",
       "gridPos": {
         "x": 8,
         "y": 33,
@@ -999,7 +1000,11 @@
               },
               {
                 "color": "yellow",
-                "value": 100
+                "value": 400
+              },
+              {
+                "color": "red",
+                "value": 800
               }
             ]
           }

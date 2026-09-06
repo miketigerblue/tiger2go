@@ -118,7 +118,7 @@ func (r *KevRunner) Run(ctx context.Context) (retErr error) {
 	slog.Info("New KEV catalog found", "version", catalog.CatalogVersion, "date", catalog.DateReleased, "count", len(catalog.Vulnerabilities))
 
 	// 3. Upsert Vulnerabilities
-	if err := r.upsertVulns(ctx, catalog.Vulnerabilities, catalog.DateReleased); err != nil {
+	if err := r.upsertVulns(ctx, catalog.Vulnerabilities); err != nil {
 		return fmt.Errorf("failed to upsert KEV vulns: %w", err)
 	}
 
@@ -159,15 +159,9 @@ func (r *KevRunner) fetchCatalog(ctx context.Context, url string) (*KevCatalog, 
 	return &catalog, nil
 }
 
-func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleased string) error {
-	// Parse catalog date for 'modified' timestamp
-	modified, err := time.Parse(time.RFC3339, dateReleased)
-	if err != nil {
-		modified = time.Now()
-	}
-
+func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln) error {
 	batch := &pgx.Batch{}
-	queuedPerVuln := 0 // 2 statements per vuln: cve_enriched + cve_kev
+	queuedPerVuln := 0 // 1 statement per vuln: cve_kev
 	queued := 0
 
 	for _, v := range vulns {
@@ -177,19 +171,15 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 			continue
 		}
 
-		// (1) cve_enriched — legacy source-keyed view; downstream tiger-eye joins on this.
-		batch.Queue(`
-			INSERT INTO cve_enriched (cve_id, source, json, modified)
-			VALUES ($1, 'CISA-KEV', $2, $3)
-			ON CONFLICT (cve_id, source)
-			DO UPDATE SET
-				json = EXCLUDED.json,
-				modified = EXCLUDED.modified
-		`, v.CveID, jsonBytes, modified)
-
-		// (2) cve_kev — first-class typed columns. Mirror exactly the
+		// cve_kev — first-class typed columns. Mirror exactly the
 		// projection used by scripts/backfill_cve_kev.sql so a re-run of
 		// that script remains a no-op.
+		//
+		// KEV membership is no longer mirrored into cve_enriched as a
+		// source='CISA-KEV' row: every consumer reads cve_kev (or
+		// cve_enriched.ssvc_exploitation='active' from NVD) and the extra
+		// row was a foot-gun for any read that forgot to filter source='NVD'.
+		// Existing CISA-KEV rows are left in place; nothing writes them now.
 		batch.Queue(`
 			INSERT INTO cve_kev (
 				cve_id, vulnerability_name, vendor_project, product,
@@ -226,7 +216,7 @@ func (r *KevRunner) upsertVulns(ctx context.Context, vulns []KevVuln, dateReleas
 		)
 
 		queued++
-		queuedPerVuln = 2
+		queuedPerVuln = 1
 	}
 
 	br := r.db.SendBatch(ctx, batch)

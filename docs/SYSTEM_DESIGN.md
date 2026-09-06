@@ -136,7 +136,7 @@ internal/
   metrics/middleware.go      HTTP request/duration instrumentation
   metrics/dbcollector.go     Live pgxpool.Stat() collector
 
-migrations/                  ~20 SQL files, Goose-managed, embedded at build time
+migrations/                  29 SQL files, Goose-managed, embedded at build time
                              (see Appendix A for the full list)
 ```
 
@@ -192,9 +192,9 @@ The data lake has three tiers, with TigerFetch writing only the first:
 |---|---|---|---|
 | `archive` | Append-only | `ON CONFLICT (guid, feed_url) DO NOTHING` | ~700 items/cycle |
 | `current` | Last-write-wins | `ON CONFLICT (guid, feed_url) DO UPDATE` | bounded by unique items |
-| `cve_enriched` | Upsert | `ON CONFLICT (cve_id, source) DO UPDATE` — every promoted column is in the `DO UPDATE` set | ~383k (NVD); KEV moved to `cve_kev`, though 1.7k legacy `source='CISA-KEV'` rows remain |
+| `cve_enriched` | Upsert | `ON CONFLICT (cve_id, source) DO UPDATE` — every promoted column is in the `DO UPDATE` set | ~383k (NVD); KEV moved to `cve_kev`. 1.7k legacy `source='CISA-KEV'` rows remain but nothing writes or scores them any more — always filter `source = 'NVD'` |
 | `cve_kev` | Upsert | `ON CONFLICT (cve_id) DO UPDATE`; `withdrawn_at` flag for catalog removals | ~1.6k active |
-| `cve_enriched_history` | Insert (via trigger on `cve_enriched`) | One row per actual state-change (no no-op UPDATEs) | grows with NVD churn |
+| `cve_enriched_history` | Insert (via trigger on `cve_enriched`) | One row per actual state-change across all twelve promoted columns (no no-op UPDATEs); `changed_fields` carries `__vuln_status__`, `__ssvc_exploitation__`, `__cvss_version__`, … | grows with NVD churn |
 | `epss_daily` | Bulk load via `COPY FROM` | Date-existence check before run | ~300k/day, partitioned monthly |
 | `osv_vulns` | Upsert | `WHERE modified IS DISTINCT FROM EXCLUDED.modified` | ~265k |
 | `ghsa_advisories` | Upsert | `WHERE updated IS DISTINCT FROM EXCLUDED.updated` | ~335k |
@@ -315,9 +315,9 @@ Per-pipeline detail below.
 ```
   CISA JSON          KevRunner             Batch Upsert       PostgreSQL
   ---------          ---------             ------------       ----------
-  Single file  --->  Compare catalog  -->  pgx.Batch()   -->  cve_enriched
-  (~1.2k vulns)      version to cursor     Marshal each       (source='CISA-KEV')
-                     Skip if unchanged     vuln to JSON
+  Single file  --->  Compare catalog  -->  pgx.Batch()   -->  cve_kev
+  (~1.7k vulns)      version to cursor     Typed columns      (withdrawn_at for
+                     Skip if unchanged     + raw JSON          catalogue removals)
 ```
 
 **Idempotency:** Compares `CatalogVersion` or `DateReleased` against stored cursor. If unchanged, the entire run is skipped (`status="up_to_date"`).
@@ -346,7 +346,7 @@ FOR VALUES FROM ('2026-03-01') TO ('2026-04-01')
 
 **Polling:** Default 24 hours. Skips entirely if today's date already exists.
 
-**Materialisation back to `cve_enriched`:** Migration `20260516_materialize_epss_to_cve_enriched.sql` introduced a PL/pgSQL function `materialize_epss_to_cve_enriched()` that pulls the latest score per CVE from the `epss_daily` partitions and writes it to `cve_enriched.epss`. Idempotent (only updates rows whose score actually changed). Coverage went from 0 % → 95 % on first run.
+**Materialisation back to `cve_enriched`:** Migration `20260516_materialize_epss_to_cve_enriched.sql` introduced a PL/pgSQL function `materialize_epss_to_cve_enriched()` that pulls the latest score per CVE from the `epss_daily` partitions and writes it to `cve_enriched.epss`. Idempotent (only updates rows whose score actually changed). Coverage went from 0 % → 95 % on first run. Since `20260904120300` it touches `source = 'NVD'` rows only, so the legacy KEV mirror rows no longer receive nightly scores.
 
 ### 4.5 OSV Pipeline (per-ecosystem bundles)
 
@@ -363,7 +363,7 @@ FOR VALUES FROM ('2026-03-01') TO ('2026-04-01')
 
 **Range filtering:** The denormalised `affected` column carries the package identity only; the original `raw.affected` jsonb has the `ranges` + `versions` arrays needed for proper version-range evaluation (done in tiger-watch's Python comparator, not here).
 
-**Known limitation:** `cvss_v3` is NULL for advisories that publish only the CVSS vector (most GHSA-sourced PyPI entries). Adding a CVSS-vector evaluator is a follow-up.
+**CVSS fallback:** most advisories publish no score of their own, so the upsert resolves `cvss_v3` through the advisory's CVE alias: the v3.x score (`cvss_version` 3.1 or 3.0 only — v2/v4 are never banded as v3) of the matching `cve_enriched` NVD row. `20260904120000_osv_cvss_v3_from_aliases.sql` backfilled existing rows the same way. Rows whose alias has only a v2 or v4 score stay NULL; a CVSS-vector evaluator for the OSV `severity` block remains a follow-up.
 
 ### 4.6 GHSA Pipeline (incremental w/ Link pagination)
 
@@ -634,7 +634,7 @@ tags            = ["government", "alerts"]
 |--------|------|--------|-------------|
 | `nvd_fetches_total` | Counter | status | NVD API call outcomes |
 | `nvd_cves_processed_total` | Counter | — | CVEs saved to DB |
-| `nvd_cves_without_cvss_total` | Counter | — | CVEs missing CVSS scores |
+| `nvd_cves_without_cvss_total` | Counter | — | CVEs with no score in any CVSS family (v3.1/v3.0/v4.0/v2.0). Baseline dropped sharply with the widened capture; the 24 h stat panel now flags at 400 (yellow) / 800 (red) per day |
 | `nvd_batch_size` | Histogram | — | Items per API page |
 | `nvd_rate_limits_total` | Counter | — | HTTP 429/503 responses |
 | `nvd_api_errors_total` | Counter | status_code | Non-retryable API errors |
@@ -1112,6 +1112,12 @@ TigerFetch is intentionally single-instance:
 | 21 | `20260516180000_create_threatfox_iocs.sql` | ThreatFox IOCs table |
 | 22 | `20260516190000_create_malwarebazaar_samples.sql` | MalwareBazaar samples table |
 | 23 | `20260516_materialize_epss_to_cve_enriched.sql` | `materialize_epss_to_cve_enriched()` function + first-run fill |
+| 24 | `20260808160000_create_cve_cpe.sql` | `cve_cpe` — flattened CPE match criteria per CVE |
+| 25 | `20260829200000_nvd_capture_expansion.sql` | Widened NVD capture: `published`, `vuln_status`, `source_identifier`, `cve_tags`, `cvss_version`, three `ssvc_*` columns; v4/v2 CVSS fallback backfill |
+| 26 | `20260904120000_osv_cvss_v3_from_aliases.sql` | Backfill `osv_vulns.cvss_v3` from the aliased NVD v3.x score |
+| 27 | `20260904120100_mark_legacy_rejected.sql` | `vuln_status = 'Rejected'` for legacy rows whose description starts `** REJECT **` |
+| 28 | `20260904120200_history_trigger_nvd_columns.sql` | History trigger guard + `changed_fields` cover the eight new columns; `prev_vuln_status` / `prev_ssvc_exploitation` / `prev_cvss_version` |
+| 29 | `20260904120300_materialize_epss_nvd_only.sql` | `materialize_epss_to_cve_enriched()` restricted to `source = 'NVD'` |
 
 ## Appendix B: Makefile Targets
 

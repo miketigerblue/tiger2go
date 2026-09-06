@@ -66,7 +66,7 @@
         "overrides": []
       },
       "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "rawSql": "SELECT COUNT(DISTINCT cve_id) AS total FROM cve_enriched", "format": "table" }]
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS total FROM cve_enriched WHERE source = 'NVD' AND vuln_status IS DISTINCT FROM 'Rejected'", "format": "table" }]
     },
     {
       "type": "stat",
@@ -78,11 +78,11 @@
         "overrides": []
       },
       "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "rawSql": "SELECT COUNT(*) AS kev_count FROM cve_enriched WHERE source = 'CISA-KEV'", "format": "table" }]
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS kev_count FROM cve_kev WHERE withdrawn_at IS NULL", "format": "table" }]
     },
     {
       "type": "stat",
-      "title": "Critical CVEs (CVSS >= 9)",
+      "title": "Critical CVEs (CVSS v3/v4 >= 9)",
       "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
       "datasource": { "type": "postgres", "uid": "pg" },
       "fieldConfig": {
@@ -90,7 +90,7 @@
         "overrides": []
       },
       "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "rawSql": "SELECT COUNT(*) AS critical FROM cve_enriched WHERE source = 'NVD' AND cvss_base >= 9.0", "format": "table" }]
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS critical FROM cve_enriched WHERE source = 'NVD' AND cvss_base >= 9.0 AND cvss_version IS DISTINCT FROM '2.0' AND vuln_status IS DISTINCT FROM 'Rejected'", "format": "table" }]
     },
     {
       "type": "stat",
@@ -118,7 +118,7 @@
         "overrides": []
       },
       "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [{ "rawSql": "SELECT COUNT(*) AS danger_zone FROM cve_enriched c JOIN epss_daily e ON c.cve_id = e.cve_id AND e.as_of = (SELECT MAX(as_of) FROM epss_daily) WHERE c.source = 'NVD' AND c.cvss_base >= ${cvss_threshold} AND e.epss >= ${epss_threshold}", "format": "table" }]
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS danger_zone FROM cve_enriched c JOIN epss_daily e ON c.cve_id = e.cve_id AND e.as_of = (SELECT MAX(as_of) FROM epss_daily) WHERE c.source = 'NVD' AND c.vuln_status IS DISTINCT FROM 'Rejected' AND c.cvss_base >= ${cvss_threshold} AND e.epss >= ${epss_threshold}", "format": "table" }]
     },
     {
       "type": "stat",
@@ -194,12 +194,21 @@
                 { "type": "value", "options": { "0": { "text": "", "color": "transparent" }, "1": { "text": "KEV", "color": "red" } } }
               ]}
             ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ssvc" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "": { "text": "", "color": "transparent" }, "none": { "text": "", "color": "transparent" }, "poc": { "text": "PoC", "color": "orange" }, "active": { "text": "ACTIVE", "color": "red" } } }
+              ]}
+            ]
           }
         ]
       },
       "options": { "showHeader": true, "sortBy": [{ "displayName": "epss", "desc": true }] },
       "targets": [{
-        "rawSql": "SELECT e.cve_id, e.epss, e.percentile, COALESCE(c.cvss_base, 0) AS cvss_base, CASE WHEN k.cve_id IS NOT NULL THEN 1 ELSE 0 END AS in_kev FROM epss_daily e LEFT JOIN cve_enriched c ON e.cve_id = c.cve_id AND c.source = 'NVD' LEFT JOIN cve_enriched k ON e.cve_id = k.cve_id AND k.source = 'CISA-KEV' WHERE e.as_of = (SELECT MAX(as_of) FROM epss_daily) ORDER BY e.epss DESC LIMIT 25",
+        "rawSql": "SELECT e.cve_id, e.epss, e.percentile, COALESCE(c.cvss_base, 0) AS cvss_base, COALESCE(c.cvss_version, '') AS cvss_version, COALESCE(c.ssvc_exploitation, '') AS ssvc, CASE WHEN k.cve_id IS NOT NULL THEN 1 ELSE 0 END AS in_kev FROM epss_daily e LEFT JOIN cve_enriched c ON e.cve_id = c.cve_id AND c.source = 'NVD' LEFT JOIN cve_kev k ON e.cve_id = k.cve_id AND k.withdrawn_at IS NULL WHERE e.as_of = (SELECT MAX(as_of) FROM epss_daily) AND c.vuln_status IS DISTINCT FROM 'Rejected' ORDER BY e.epss DESC LIMIT 25",
         "format": "table"
       }]
     },
@@ -414,6 +423,16 @@
             ]
           },
           {
+            "matcher": { "id": "byName", "options": "ssvc" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background-solid" },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "": { "text": "", "color": "transparent" }, "none": { "text": "", "color": "transparent" }, "poc": { "text": "PoC", "color": "orange" }, "active": { "text": "ACTIVE", "color": "red" } } }
+              ]},
+              { "id": "custom.width", "value": 80 }
+            ]
+          },
+          {
             "matcher": { "id": "byName", "options": "risk_score" },
             "properties": [
               { "id": "custom.displayMode", "value": "gradient-gauge" },
@@ -440,7 +459,7 @@
       },
       "options": { "showHeader": true, "sortBy": [{ "displayName": "risk_score", "desc": true }] },
       "targets": [{
-        "rawSql": "SELECT c.cve_id, c.cvss_base, e.epss, e.percentile, ROUND((c.cvss_base * e.epss * 10)::numeric / 10, 2) AS risk_score, CASE WHEN k.cve_id IS NOT NULL THEN 1 ELSE 0 END AS in_kev FROM cve_enriched c JOIN epss_daily e ON c.cve_id = e.cve_id AND e.as_of = (SELECT MAX(as_of) FROM epss_daily) LEFT JOIN cve_enriched k ON c.cve_id = k.cve_id AND k.source = 'CISA-KEV' WHERE c.source = 'NVD' AND c.cvss_base >= ${cvss_threshold} AND e.epss >= ${epss_threshold} ORDER BY (c.cvss_base * e.epss) DESC LIMIT 50",
+        "rawSql": "SELECT c.cve_id, c.cvss_base, COALESCE(c.cvss_version, '') AS cvss_version, e.epss, e.percentile, ROUND((c.cvss_base * e.epss * 10)::numeric / 10, 2) AS risk_score, COALESCE(c.ssvc_exploitation, '') AS ssvc, CASE WHEN k.cve_id IS NOT NULL THEN 1 ELSE 0 END AS in_kev FROM cve_enriched c JOIN epss_daily e ON c.cve_id = e.cve_id AND e.as_of = (SELECT MAX(as_of) FROM epss_daily) LEFT JOIN cve_kev k ON c.cve_id = k.cve_id AND k.withdrawn_at IS NULL WHERE c.source = 'NVD' AND c.vuln_status IS DISTINCT FROM 'Rejected' AND c.cvss_base >= ${cvss_threshold} AND e.epss >= ${epss_threshold} ORDER BY (c.cvss_base * e.epss) DESC LIMIT 50",
         "format": "table"
       }]
     },
@@ -454,6 +473,7 @@
     {
       "type": "barchart",
       "title": "CVSS Score Distribution",
+      "description": "Grouped by the CVSS version that produced cvss_base. v2.0 has no Critical band: a v2 score of 9-10 is HIGH, not CRITICAL.",
       "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
       "datasource": { "type": "postgres", "uid": "pg" },
       "fieldConfig": {
@@ -463,15 +483,16 @@
         },
         "overrides": []
       },
-      "options": { "orientation": "vertical", "legend": { "displayMode": "hidden" }, "tooltip": { "mode": "single" } },
+      "options": { "orientation": "vertical", "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [{
-        "rawSql": "SELECT CASE WHEN cvss_base < 1 THEN '0-1 (None)' WHEN cvss_base < 4 THEN '1-4 (Low)' WHEN cvss_base < 7 THEN '4-7 (Medium)' WHEN cvss_base < 9 THEN '7-9 (High)' ELSE '9-10 (Critical)' END AS severity, COUNT(*) AS count FROM cve_enriched WHERE source = 'NVD' AND cvss_base IS NOT NULL GROUP BY severity ORDER BY severity",
+        "rawSql": "SELECT CASE WHEN cvss_base < 1 THEN '0-1' WHEN cvss_base < 4 THEN '1-4' WHEN cvss_base < 7 THEN '4-7' WHEN cvss_base < 9 THEN '7-9' ELSE '9-10' END AS band, COUNT(*) FILTER (WHERE cvss_version = '2.0') AS \"v2.0\", COUNT(*) FILTER (WHERE cvss_version = '3.0') AS \"v3.0\", COUNT(*) FILTER (WHERE cvss_version = '3.1') AS \"v3.1\", COUNT(*) FILTER (WHERE cvss_version = '4.0') AS \"v4.0\" FROM cve_enriched WHERE source = 'NVD' AND cvss_base IS NOT NULL AND vuln_status IS DISTINCT FROM 'Rejected' GROUP BY band ORDER BY band",
         "format": "table"
       }]
     },
     {
       "type": "timeseries",
-      "title": "NVD CVEs by Modified Date (30d)",
+      "title": "NVD CVEs by Published Date (30d)",
+      "description": "Bucketed by NVD published date, falling back to lastModified for rows captured before published was stored. critical = v3/v4 >= 9; v2 scores of 9+ count as high.",
       "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
       "datasource": { "type": "postgres", "uid": "pg" },
       "fieldConfig": {
@@ -485,12 +506,12 @@
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "rawSql": "SELECT DATE_TRUNC('day', modified) AS time, COUNT(*) FILTER (WHERE cvss_base >= 9) AS critical, COUNT(*) FILTER (WHERE cvss_base >= 7 AND cvss_base < 9) AS high, COUNT(*) FILTER (WHERE cvss_base >= 4 AND cvss_base < 7) AS medium, COUNT(*) FILTER (WHERE cvss_base < 4) AS low FROM cve_enriched WHERE source = 'NVD' AND cvss_base IS NOT NULL AND modified >= NOW() - INTERVAL '30 days' GROUP BY DATE_TRUNC('day', modified) ORDER BY time", "format": "time_series" }
+        { "rawSql": "SELECT DATE_TRUNC('day', COALESCE(published, modified)) AS time, COUNT(*) FILTER (WHERE cvss_base >= 9 AND cvss_version IS DISTINCT FROM '2.0') AS critical, COUNT(*) FILTER (WHERE cvss_base >= 7 AND (cvss_base < 9 OR cvss_version = '2.0')) AS high, COUNT(*) FILTER (WHERE cvss_base >= 4 AND cvss_base < 7) AS medium, COUNT(*) FILTER (WHERE cvss_base < 4) AS low FROM cve_enriched WHERE source = 'NVD' AND cvss_base IS NOT NULL AND vuln_status IS DISTINCT FROM 'Rejected' AND COALESCE(published, modified) >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY time", "format": "time_series" }
       ]
     },
     {
       "type": "table",
-      "title": "Latest Critical CVEs (CVSS >= 9.0, Last 30d)",
+      "title": "Latest Critical CVEs (CVSS v3/v4 >= 9.0, Published Last 30d)",
       "gridPos": { "x": 0, "y": 48, "w": 12, "h": 10 },
       "datasource": { "type": "postgres", "uid": "pg" },
       "fieldConfig": {
@@ -511,7 +532,7 @@
       },
       "options": { "showHeader": true },
       "targets": [{
-        "rawSql": "SELECT cve_id, cvss_base, modified::date AS modified FROM cve_enriched WHERE source = 'NVD' AND cvss_base >= 9.0 AND modified >= NOW() - INTERVAL '30 days' ORDER BY modified DESC, cvss_base DESC LIMIT 30",
+        "rawSql": "SELECT cve_id, cvss_base, cvss_version, COALESCE(ssvc_exploitation, '') AS ssvc, COALESCE(published, modified)::date AS published FROM cve_enriched WHERE source = 'NVD' AND cvss_base >= 9.0 AND cvss_version IS DISTINCT FROM '2.0' AND vuln_status IS DISTINCT FROM 'Rejected' AND COALESCE(published, modified) >= NOW() - INTERVAL '30 days' ORDER BY COALESCE(published, modified) DESC, cvss_base DESC LIMIT 30",
         "format": "table"
       }]
     },
@@ -535,7 +556,7 @@
       },
       "options": { "showHeader": true },
       "targets": [{
-        "rawSql": "SELECT cve_id, json->>'vendorProject' AS vendor, json->>'product' AS product, json->>'vulnerabilityName' AS vulnerability, json->>'dateAdded' AS date_added FROM cve_enriched WHERE source = 'CISA-KEV' ORDER BY json->>'dateAdded' DESC LIMIT 25",
+        "rawSql": "SELECT cve_id, vendor_project AS vendor, product, vulnerability_name AS vulnerability, date_added, known_ransomware_use AS ransomware FROM cve_kev WHERE withdrawn_at IS NULL ORDER BY date_added DESC, cve_id DESC LIMIT 25",
         "format": "table"
       }]
     },
