@@ -342,6 +342,8 @@ PARTITION OF epss_daily
 FOR VALUES FROM ('2026-03-01') TO ('2026-04-01')
 ```
 
+**Partition Retention:** The `[maintenance]` worker (`internal/maintenance`) drops a monthly partition once every day in it is more than `epss_retention_days` (production: 90) behind the newest snapshot, so the table holds 90 to ~120 days (~6-8 GB) instead of growing ~2 GB a month. The cutoff is anchored on `max(as_of)`, not the wall clock, so a stalled ingest cannot cause the remaining history to be pruned. Each `DROP` runs under a 5s `lock_timeout` and is retried on the next cycle if a long reader holds the table. Older days remain available from FIRST's daily archive. Metrics: `tigerfetch_maintenance_runs_total`, `tigerfetch_maintenance_partitions_dropped_total`.
+
 **Bulk Performance:** Uses PostgreSQL `COPY FROM` protocol via `pgx.CopyFrom()` for high-throughput loading (~300k records per daily snapshot).
 
 **Polling:** Default 24 hours. Skips entirely if today's date already exists.

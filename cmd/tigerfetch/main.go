@@ -18,6 +18,7 @@ import (
 	"tiger2go/internal/db"
 	"tiger2go/internal/ghsa"
 	"tiger2go/internal/ingestor"
+	"tiger2go/internal/maintenance"
 	"tiger2go/internal/metrics"
 	"tiger2go/internal/msf"
 	"tiger2go/internal/nuclei"
@@ -431,6 +432,34 @@ func main() {
 				case <-ticker.C:
 					if err := runner.Run(ctx); err != nil {
 						slog.Error("Alerting runner error", "error", err)
+					}
+					ticker.Reset(interval)
+				}
+			}
+		}()
+	}
+
+	// Run retention maintenance if enabled
+	if cfg.Maintenance.Enabled {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			runner := maintenance.NewRunner(pool, cfg.Maintenance)
+			interval, err := cfg.Maintenance.GetPollDuration()
+			if err != nil || interval <= 0 {
+				slog.Warn("Invalid maintenance poll interval, using default 24h", "error", err)
+				interval = 24 * time.Hour
+			}
+			// Delay first run by 1m to keep partition DROPs out of the startup burst
+			ticker := time.NewTimer(time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := runner.Run(ctx); err != nil {
+						slog.Error("Maintenance runner error", "error", err)
 					}
 					ticker.Reset(interval)
 				}

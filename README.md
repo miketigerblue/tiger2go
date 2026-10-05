@@ -157,6 +157,7 @@ Configuration is handled via `Config.toml` and environment variables. Each inges
 | `[nuclei]` | `enabled`, `poll_interval`, `template_subdirs` | ProjectDiscovery Nuclei templates |
 | `[msf]` | `enabled`, `poll_interval` | Metasploit Framework module metadata |
 | `[alerting]` | `enabled`, `[[alerting.webhooks]]` | Sleeper-CVE detection + Slack / generic webhooks |
+| `[maintenance]` | `enabled`, `poll_interval`, `epss_retention_days` | Retention: drops `epss_daily` monthly partitions older than the window (off by default) |
 
 ### Environment variables
 
