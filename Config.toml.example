@@ -545,6 +545,18 @@ lookback_days = 7
 # type = "generic"
 
 # ----------------------------------------------------------------------
+# Maintenance (retention)
+# ----------------------------------------------------------------------
+# Deletes data, so it is off by default. When enabled, drops whole monthly
+# epss_daily partitions once every day in them is more than
+# epss_retention_days behind the newest snapshot (minimum 14). Partitions
+# are never trimmed, so the table holds that many days plus up to a month.
+[maintenance]
+enabled             = false
+poll_interval       = "6h"
+epss_retention_days = 90
+
+# ----------------------------------------------------------------------
 # Content length limits (configurable)
 # ----------------------------------------------------------------------
 [max_lengths]

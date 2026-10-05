@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### EPSS partition retention — `internal/maintenance`, `[maintenance]` config
+- `epss_daily` was 57% of the lake (9.0 of 15.7 GB) and growing ~2 GB a
+  month with nothing pruning it. No reader needs a full snapshot more
+  than 7 days back; the only deep reads are per-CVE history, 90 days by
+  default.
+- New `[maintenance]` worker drops a monthly partition once every day in
+  it is more than `epss_retention_days` behind the newest snapshot.
+  Production is set to 90, so the table settles at 90 to ~120 days
+  (~6-8 GB). Off unless enabled; refuses a retention under 14 days.
+- Anchored on `max(as_of)` (capped at today), not the wall clock: if
+  ingest stalls, retention stops too rather than eating what is left.
+- Each `DROP` runs under a 5s `lock_timeout` so it cannot queue every
+  `epss_daily` reader behind a long query; a miss is retried next cycle
+  (6h in production). No `CASCADE`.
+- **First run after deploy drops `epss_daily_y2026m03`..`m06` (~3.0 GB).**
+  Those days stay available from FIRST's daily archive.
+- Metrics: `tigerfetch_maintenance_runs_total{status}`,
+  `tigerfetch_maintenance_partitions_dropped_total{table}`.
+
 #### Widened NVD capture — `internal/cve/nvd.go`, migration `20260829200000_nvd_capture_expansion.sql`
 - `NvdCveItem` parsed 5 of the 16 fields NVD 2.0 ships. Now also captures
   `published`, `vulnStatus`, `sourceIdentifier`, `cveTags` and

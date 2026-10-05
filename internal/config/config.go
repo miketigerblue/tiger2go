@@ -24,6 +24,8 @@ type Config struct {
 	MSF      MsfConfig      `mapstructure:"msf"`
 	Nuclei   NucleiConfig   `mapstructure:"nuclei"`
 	Alerting AlertingConfig `mapstructure:"alerting"`
+
+	Maintenance MaintenanceConfig `mapstructure:"maintenance"`
 }
 
 // Feed represents a single RSS/Atom source configuration.
@@ -150,6 +152,16 @@ type WebhookConfig struct {
 	Type string `mapstructure:"type"` // "slack" or "generic"
 }
 
+// MaintenanceConfig controls housekeeping that deletes data, so it is off
+// unless enabled. EpssRetentionDays is how many days of epss_daily
+// snapshots to keep behind the newest one; a monthly partition is dropped
+// once every day in it is older than that. 0 leaves EPSS history alone.
+type MaintenanceConfig struct {
+	Enabled           bool   `mapstructure:"enabled"`
+	PollInterval      string `mapstructure:"poll_interval"`
+	EpssRetentionDays int    `mapstructure:"epss_retention_days"`
+}
+
 // Load reads configuration from config files and environment variables.
 func Load() (*Config, error) {
 	v := viper.New()
@@ -241,5 +253,9 @@ func (c *NucleiConfig) GetPollDuration() (time.Duration, error) {
 }
 
 func (c *AlertingConfig) GetPollDuration() (time.Duration, error) {
+	return time.ParseDuration(c.PollInterval)
+}
+
+func (c *MaintenanceConfig) GetPollDuration() (time.Duration, error) {
 	return time.ParseDuration(c.PollInterval)
 }

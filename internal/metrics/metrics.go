@@ -339,6 +339,20 @@ var AlertingRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 })
 
 // ---------------------------------------------------------------------------
+// Maintenance
+// ---------------------------------------------------------------------------
+
+var MaintenanceRuns = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_maintenance_runs_total",
+	Help: "Maintenance Run() outcomes (success, error).",
+}, []string{"status"})
+
+var MaintenancePartitionsDropped = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_maintenance_partitions_dropped_total",
+	Help: "Expired partitions dropped by retention, by parent table.",
+}, []string{"table"})
+
+// ---------------------------------------------------------------------------
 // Upstream HTTP latency (all sources)
 // ---------------------------------------------------------------------------
 

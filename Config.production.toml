@@ -286,3 +286,13 @@ enabled       = true
 poll_interval = "1h"
 lookback_days = 7
 # webhooks configured via separate mechanism — leave empty for now
+
+# Retention. Drops whole monthly epss_daily partitions once every day in
+# them is more than epss_retention_days behind the newest snapshot, so the
+# table holds 90 to ~120 days. FIRST keeps the full daily archive if an
+# older day is ever needed. 6h so a drop that loses the lock race to a
+# long reader is retried the same day.
+[maintenance]
+enabled             = true
+poll_interval       = "6h"
+epss_retention_days = 90
