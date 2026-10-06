@@ -36,19 +36,32 @@ type Feed struct {
 	Tags     []string `mapstructure:"tags"`
 }
 
+// NvdConfig controls the NVD 2.0 ingestor. It makes two passes per run:
+// new publications (pubStartDate) and modifications to existing records
+// (lastModStartDate), each with its own cursor in ingest_state.
+// ModifiedSince (RFC3339) is where the modification cursor starts the
+// first time it runs; empty means 120 days before that run. Set it
+// further back for a one-off re-sync; every window costs API pages and
+// one cve_enriched_history row per changed record.
 type NvdConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	PollInterval string `mapstructure:"poll_interval"`
-	PageSize     int    `mapstructure:"page_size"`
-	ApiKey       string `mapstructure:"api_key"`
-	URL          string `mapstructure:"url"`
+	Enabled       bool   `mapstructure:"enabled"`
+	PollInterval  string `mapstructure:"poll_interval"`
+	PageSize      int    `mapstructure:"page_size"`
+	ApiKey        string `mapstructure:"api_key"`
+	URL           string `mapstructure:"url"`
+	ModifiedSince string `mapstructure:"modified_since"`
 }
 
+// EpssConfig controls the FIRST EPSS ingestor. It loads whole days from
+// FIRST's daily archive (one gzipped CSV per date) rather than paging the
+// API, so a day is either complete or absent. ArchiveURL is a template
+// with a {date} token (YYYY-MM-DD). Each run looks back BackfillDays
+// (default 14) and loads any day that is missing or visibly short.
 type EpssConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	PollInterval string `mapstructure:"poll_interval"`
-	URL          string `mapstructure:"url"`
-	PageSize     int    `mapstructure:"page_size"`
+	ArchiveURL   string `mapstructure:"archive_url"`
+	BackfillDays int    `mapstructure:"backfill_days"`
 }
 
 type KevConfig struct {

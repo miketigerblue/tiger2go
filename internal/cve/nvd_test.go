@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -234,4 +235,94 @@ func TestNvdRunner_WidenedCapture(t *testing.T) {
 	assert.Contains(t, refsJSON, "https://example.test/advisory")
 	assert.Contains(t, refsJSON, "Vendor Advisory")
 	assert.NotContains(t, refsJSON, "cve@mitre.org")
+}
+
+// TestNvdRunner_ModifiedPass requires a running DB. NVD only returns
+// records matching the date filter asked for, so the mock answers the
+// publication window with the record as first published (Received, no
+// score) and the modification window with it analysed. The lake must end
+// up holding the analysed version and a cursor for the second pass.
+func TestNvdRunner_ModifiedPass(t *testing.T) {
+	databaseURL, ok := os.LookupEnv("DATABASE_URL")
+	if !ok || databaseURL == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx := context.Background()
+	require.NoError(t, db.Migrate(databaseURL, "../../migrations"))
+	pool, err := db.NewPool(ctx, databaseURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	const id = "CVE-TEST-NVD-002"
+	record := func(status, metrics, lastModified string) string {
+		return `{"resultsPerPage":1,"startIndex":0,"totalResults":1,"format":"NVD_CVE","version":"2.0",
+			"timestamp":"2023-01-01T00:00:00.000","vulnerabilities":[{"cve":{
+			"id":"` + id + `","published":"2023-01-01T00:00:00.000","lastModified":"` + lastModified + `",
+			"vulnStatus":"` + status + `","metrics":` + metrics + `}}]}`
+	}
+
+	var mu sync.Mutex
+	var passes []string
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case q.Has("pubStartDate") && q.Has("pubEndDate") && !q.Has("lastModStartDate"):
+			passes = append(passes, "published")
+			_, _ = w.Write([]byte(record("Received", `{}`, "2023-01-01T00:00:00.000")))
+		case q.Has("lastModStartDate") && q.Has("lastModEndDate") && !q.Has("pubStartDate"):
+			passes = append(passes, "modified")
+			_, _ = w.Write([]byte(record("Analyzed", `{"cvssMetricV31":[{"cvssData":{"baseScore":9.8}}]}`, "2023-02-01T00:00:00.000")))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer mockServer.Close()
+
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM ingest_state WHERE source IN ('NVD', 'NVD-MODIFIED')")
+		_, _ = pool.Exec(ctx, "DELETE FROM cve_enriched WHERE cve_id = $1", id)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	now := time.Now().UTC()
+	_, err = pool.Exec(ctx, "INSERT INTO ingest_state (source, cursor) VALUES ('NVD', $1)", now.Add(-60*24*time.Hour).Format(time.RFC3339))
+	require.NoError(t, err)
+
+	runner := NewNvdRunner(pool, config.NvdConfig{
+		Enabled:       true,
+		ApiKey:        "test-key",
+		PageSize:      10,
+		URL:           mockServer.URL,
+		ModifiedSince: now.Add(-30 * 24 * time.Hour).Format(time.RFC3339),
+	})
+	require.NoError(t, runner.Run(ctx))
+
+	mu.Lock()
+	assert.Equal(t, []string{"published", "modified"}, passes, "one window per pass, publications first")
+	mu.Unlock()
+
+	var status string
+	var cvss *float64
+	require.NoError(t, pool.QueryRow(ctx,
+		"SELECT vuln_status, cvss_base FROM cve_enriched WHERE cve_id = $1 AND source = 'NVD'", id).Scan(&status, &cvss))
+	assert.Equal(t, "Analyzed", status, "the modification overwrote the publication-time record")
+	require.NotNil(t, cvss)
+	assert.InDelta(t, 9.8, *cvss, 0.001)
+
+	var cursor string
+	require.NoError(t, pool.QueryRow(ctx, "SELECT cursor FROM ingest_state WHERE source = 'NVD-MODIFIED'").Scan(&cursor))
+	parsed, err := time.Parse(time.RFC3339, cursor)
+	require.NoError(t, err)
+	assert.WithinDuration(t, now, parsed, time.Minute, "modification cursor advanced to now")
+
+	// A second run resumes from the stored cursors: both windows are
+	// near-empty but still asked for, and nothing regresses.
+	require.NoError(t, runner.Run(ctx))
+	require.NoError(t, pool.QueryRow(ctx,
+		"SELECT vuln_status FROM cve_enriched WHERE cve_id = $1 AND source = 'NVD'", id).Scan(&status))
+	assert.Equal(t, "Analyzed", status)
 }

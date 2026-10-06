@@ -146,9 +146,9 @@ Configuration is handled via `Config.toml` and environment variables. Each inges
 | Global | `server_bind` | Host:Port for metrics server (default `0.0.0.0:9101`) |
 | Global | `ingest_interval` | Feed polling interval (default `1h`) |
 | `[[feeds]]` | `name`, `url`, `feed_type`, `tags` | RSS/Atom feed sources |
-| `[nvd]` | `enabled`, `api_key`, `poll_interval`, `page_size` | NVD CVE enrichment; API key enables 10× rate limit |
+| `[nvd]` | `enabled`, `api_key`, `poll_interval`, `page_size`, `modified_since` | NVD CVE enrichment, publications and modifications; API key enables 10× rate limit |
 | `[kev]` | `enabled`, `poll_interval`, `url` | CISA KEV catalogue |
-| `[epss]` | `enabled`, `poll_interval`, `page_size`, `url` | FIRST EPSS daily scores |
+| `[epss]` | `enabled`, `poll_interval`, `archive_url`, `backfill_days` | FIRST EPSS daily scores, whole days from the archive with self-healing backfill |
 | `[osv]` | `enabled`, `poll_interval`, `ecosystems` | OSV per-ecosystem feeds (PyPI, npm, Go, …) |
 | `[ghsa]` | `enabled`, `poll_interval`, `token` | GitHub Security Advisory Database (token raises 60 → 5,000 req/h) |
 | `[urlhaus]` | `enabled`, `poll_interval` | abuse.ch URLhaus (no auth) |

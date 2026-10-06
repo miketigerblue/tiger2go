@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type NvdResponse struct {
@@ -299,6 +300,28 @@ func NewNvdRunner(db *pgxpool.Pool, cfg config.NvdConfig) *NvdRunner {
 	}
 }
 
+// nvdPass is one of the two date filters NVD 2.0 offers. The API returns
+// only records matching the filter asked for, so a mirror needs both: the
+// publication pass captures each record once, at first publication, and
+// on its own never sees the analysis (CVSS, CPE applicability), status
+// transitions (Received → Analyzed → Rejected) or SSVC that NVD adds
+// later. Until the modification pass existed every row in the lake was
+// frozen at publication: of 17,756 rows with a status, none was Analyzed.
+type nvdPass struct {
+	name       string // ingest_state source and log label
+	startParam string
+	endParam   string
+	lag        prometheus.Gauge
+}
+
+var (
+	passPublished = nvdPass{name: "NVD", startParam: "pubStartDate", endParam: "pubEndDate", lag: metrics.NvdCursorLag}
+	passModified  = nvdPass{name: "NVD-MODIFIED", startParam: "lastModStartDate", endParam: "lastModEndDate", lag: metrics.NvdModifiedCursorLag}
+)
+
+// nvdMaxWindow is the widest date range NVD 2.0 accepts per request.
+const nvdMaxWindow = 120 * 24 * time.Hour
+
 func (r *NvdRunner) Run(ctx context.Context) error {
 	if !r.cfg.Enabled {
 		slog.Info("NVD ingestion disabled")
@@ -310,54 +333,86 @@ func (r *NvdRunner) Run(ctx context.Context) error {
 		metrics.NvdRunDuration.Observe(time.Since(start).Seconds())
 	}()
 
-	// 1. Get Cursor
-	cursor, err := r.getCursor(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get NVD cursor: %w", err)
-	}
-
-	startDt, err := time.Parse(time.RFC3339, cursor)
-	if err != nil {
-		slog.Warn("Invalid NVD cursor, resetting to 2000-01-01", "cursor", cursor, "error", err)
-		startDt = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-	}
-
 	now := time.Now().UTC()
 
-	// Record cursor lag
-	metrics.NvdCursorLag.Set(now.Sub(startDt).Seconds())
-
-	// NVD Max window is 120 days
-	maxWindow := 120 * 24 * time.Hour
-
-	for startDt.Before(now) {
-		endDt := startDt.Add(maxWindow)
-		if endDt.After(now) {
-			endDt = now
-		}
-
-		slog.Info("Processing NVD window", "start", startDt, "end", endDt)
-
-		if err := r.processWindow(ctx, startDt, endDt); err != nil {
-			return err
-		}
-
-		// Update cursor
-		if err := r.setCursor(ctx, endDt.Format(time.RFC3339)); err != nil {
-			return fmt.Errorf("failed to update cursor: %w", err)
-		}
-
-		startDt = endDt
-
-		// Update cursor lag as we catch up
-		metrics.NvdCursorLag.Set(now.Sub(startDt).Seconds())
+	if err := r.runPass(ctx, passPublished, now); err != nil {
+		return err
+	}
+	if err := r.runPass(ctx, passModified, now); err != nil {
+		return err
 	}
 
 	slog.Info("NVD ingestion complete")
 	return nil
 }
 
-func (r *NvdRunner) processWindow(ctx context.Context, start, end time.Time) error {
+// runPass walks one pass's cursor forward to now in NVD-sized windows,
+// committing the cursor after each window so a failure resumes rather
+// than restarts.
+func (r *NvdRunner) runPass(ctx context.Context, pass nvdPass, now time.Time) error {
+	startDt, err := r.cursorStart(ctx, pass, now)
+	if err != nil {
+		return fmt.Errorf("failed to get %s cursor: %w", pass.name, err)
+	}
+
+	// Record cursor lag
+	pass.lag.Set(now.Sub(startDt).Seconds())
+
+	for startDt.Before(now) {
+		endDt := startDt.Add(nvdMaxWindow)
+		if endDt.After(now) {
+			endDt = now
+		}
+
+		slog.Info("Processing NVD window", "pass", pass.name, "start", startDt, "end", endDt)
+
+		if err := r.processWindow(ctx, pass, startDt, endDt); err != nil {
+			return err
+		}
+
+		// Update cursor
+		if err := r.setCursor(ctx, pass.name, endDt.Format(time.RFC3339)); err != nil {
+			return fmt.Errorf("failed to update %s cursor: %w", pass.name, err)
+		}
+
+		startDt = endDt
+
+		// Update cursor lag as we catch up
+		pass.lag.Set(now.Sub(startDt).Seconds())
+	}
+	return nil
+}
+
+// cursorStart is where a pass resumes. With no stored cursor the
+// publication pass starts at 2000-01-01 (a full load); the modification
+// pass starts at modified_since, or one window back when that is unset,
+// because re-walking every modification since 2000 would re-fetch the
+// whole catalogue several times over.
+func (r *NvdRunner) cursorStart(ctx context.Context, pass nvdPass, now time.Time) (time.Time, error) {
+	cursor, err := r.getCursor(ctx, pass.name)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if cursor != "" {
+		if t, err := time.Parse(time.RFC3339, cursor); err == nil {
+			return t, nil
+		}
+		slog.Warn("Invalid NVD cursor, resetting", "pass", pass.name, "cursor", cursor)
+	}
+
+	if pass.name == passModified.name {
+		if t, err := time.Parse(time.RFC3339, r.cfg.ModifiedSince); err == nil {
+			return t.UTC(), nil
+		}
+		if r.cfg.ModifiedSince != "" {
+			slog.Warn("Invalid nvd.modified_since, using one window back", "value", r.cfg.ModifiedSince)
+		}
+		return now.Add(-nvdMaxWindow), nil
+	}
+	return time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), nil
+}
+
+func (r *NvdRunner) processWindow(ctx context.Context, pass nvdPass, start, end time.Time) error {
 	startIndex := 0
 	pageSize := r.cfg.PageSize
 	if pageSize <= 0 {
@@ -380,8 +435,8 @@ func (r *NvdRunner) processWindow(ctx context.Context, start, end time.Time) err
 			return fmt.Errorf("invalid NVD URL %q: %w", baseURL, err)
 		}
 		q := u.Query()
-		q.Set("pubStartDate", startStr)
-		q.Set("pubEndDate", endStr)
+		q.Set(pass.startParam, startStr)
+		q.Set(pass.endParam, endStr)
 		q.Set("resultsPerPage", strconv.Itoa(pageSize))
 		q.Set("startIndex", strconv.Itoa(startIndex))
 		u.RawQuery = q.Encode()
@@ -741,12 +796,13 @@ func parseNvdTime(s string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func (r *NvdRunner) getCursor(ctx context.Context) (string, error) {
+// getCursor returns the stored cursor for a pass, or "" when it has
+// never run.
+func (r *NvdRunner) getCursor(ctx context.Context, source string) (string, error) {
 	var cursor string
-	err := r.db.QueryRow(ctx, "SELECT cursor FROM ingest_state WHERE source = 'NVD'").Scan(&cursor)
+	err := r.db.QueryRow(ctx, "SELECT cursor FROM ingest_state WHERE source = $1", source).Scan(&cursor)
 	if err == pgx.ErrNoRows {
-		// Default start date: 2000-01-01
-		return "2000-01-01T00:00:00Z", nil
+		return "", nil
 	}
 	if err != nil {
 		return "", err
@@ -754,10 +810,10 @@ func (r *NvdRunner) getCursor(ctx context.Context) (string, error) {
 	return cursor, nil
 }
 
-func (r *NvdRunner) setCursor(ctx context.Context, cursor string) error {
+func (r *NvdRunner) setCursor(ctx context.Context, source, cursor string) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO ingest_state (source, cursor) VALUES ('NVD', $1)
+		INSERT INTO ingest_state (source, cursor) VALUES ($1, $2)
 		ON CONFLICT (source) DO UPDATE SET cursor = EXCLUDED.cursor
-	`, cursor)
+	`, source, cursor)
 	return err
 }
