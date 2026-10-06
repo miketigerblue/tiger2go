@@ -171,8 +171,8 @@ func main() {
 			runner := cve.NewEpssRunner(pool, cfg.EPSS)
 			interval, err := cfg.EPSS.GetPollDuration()
 			if err != nil || interval <= 0 {
-				slog.Warn("Invalid EPSS poll interval, using default 24h", "error", err)
-				interval = 24 * time.Hour
+				slog.Warn("Invalid EPSS poll interval, using default 6h", "error", err)
+				interval = 6 * time.Hour
 			}
 			ticker := time.NewTimer(0)
 			defer ticker.Stop()

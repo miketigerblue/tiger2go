@@ -195,7 +195,7 @@ The data lake has three tiers, with TigerFetch writing only the first:
 | `cve_enriched` | Upsert | `ON CONFLICT (cve_id, source) DO UPDATE` — every promoted column is in the `DO UPDATE` set | ~383k (NVD); KEV moved to `cve_kev`. 1.7k legacy `source='CISA-KEV'` rows remain but nothing writes or scores them any more — always filter `source = 'NVD'` |
 | `cve_kev` | Upsert | `ON CONFLICT (cve_id) DO UPDATE`; `withdrawn_at` flag for catalog removals | ~1.6k active |
 | `cve_enriched_history` | Insert (via trigger on `cve_enriched`) | One row per actual state-change across all twelve promoted columns (no no-op UPDATEs); `changed_fields` carries `__vuln_status__`, `__ssvc_exploitation__`, `__cvss_version__`, … | grows with NVD churn |
-| `epss_daily` | Bulk load via `COPY FROM` | Date-existence check before run | ~300k/day, partitioned monthly |
+| `epss_daily` | Whole day via `COPY FROM` in one transaction | Per-day row count; short days reloaded | ~380k/day, partitioned monthly |
 | `osv_vulns` | Upsert | `WHERE modified IS DISTINCT FROM EXCLUDED.modified` | ~265k |
 | `ghsa_advisories` | Upsert | `WHERE updated IS DISTINCT FROM EXCLUDED.updated` | ~335k |
 | `urlhaus_urls` | Upsert | row only touched when `url_status`/`last_online` change | ~26k |
@@ -238,7 +238,7 @@ The 11 ingestors fall into four shape classes:
 | Incremental API w/ time cursor | RFC3339 timestamp in `ingest_state` | `ON CONFLICT … WHERE … IS DISTINCT FROM …` | NVD, GHSA |
 | Single-file catalogue | Catalogue version/date in `ingest_state` | Skip run if cursor unchanged | CISA KEV, MSF (Rapid7 JSON cache), Nuclei (tarball) |
 | Per-window pull | "first_seen >= now() - N" implicit | PK conflict + row-changed guard | URLhaus, ThreatFox, MalwareBazaar |
-| Bulk daily snapshot | Date in partition table | Skip if date already present | EPSS |
+| Bulk daily snapshot | Row count per day vs. the window | Reload any missing or short day whole | EPSS |
 | Per-ecosystem bundle | none (re-fetch each cycle) | `WHERE modified IS DISTINCT FROM …` | OSV (per-ecosystem ZIPs) |
 
 Per-pipeline detail below.
@@ -277,7 +277,9 @@ Per-pipeline detail below.
                      ingest_state          flattenCpe        cve_cpe rows
 ```
 
-**Window Strategy:** NVD limits queries to 120-day ranges. The runner splits the gap between the cursor and now into sequential 120-day windows, advancing the cursor after each.
+**Two passes, two cursors.** NVD returns only records matching the date filter asked for, so each run makes a publication pass (`pubStartDate`/`pubEndDate`, cursor `NVD` in `ingest_state`) and then a modification pass (`lastModStartDate`/`lastModEndDate`, cursor `NVD-MODIFIED`). Until October 2026 only the first existed: every record was captured once, at publication, and the analysis NVD adds days later (CVSS, CPE applicability, `vulnStatus` transitions, SSVC) never arrived — of 17,756 rows with a status, none was `Analyzed` and 27,743 had no CVSS. The modification pass starts from `nvd.modified_since` the first time it runs (production: 2026-01-01, a one-off re-sync), then follows the cursor.
+
+**Window Strategy:** NVD limits queries to 120-day ranges. Each pass splits the gap between its cursor and now into sequential 120-day windows, advancing the cursor after each.
 
 **Captured fields.** NVD 2.0 ships 16 top-level fields per CVE. `NvdCveItem` declares what is kept; anything undeclared is dropped at unmarshal.
 
@@ -327,15 +329,19 @@ Per-pipeline detail below.
 ### 4.4 EPSS Pipeline (Exploit Prediction Scoring)
 
 ```
-  FIRST.org API      EpssRunner            COPY FROM          PostgreSQL
-  -------------      ----------            ---------          ----------
-  Paginated    --->  Check if date   --->  pgx.CopyFrom()  -> epss_daily
-  CSV/JSON           already ingested      ~300k rows/day     (partitioned)
-  5000/page          Auto-create monthly                      by month
-                     partition
+  FIRST archive        EpssRunner                 COPY FROM          PostgreSQL
+  -------------        ----------                 ---------          ----------
+  One gzipped    --->  Count rows per day    --->  one transaction -> epss_daily
+  CSV per date         in the last 14 days         per day:           (partitioned
+  ~7 MB, ~380k         load any day that is        DELETE short day   by month)
+  rows                 missing or short            COPY whole file
 ```
 
-**Partition Auto-Creation:** Before each bulk load, ensures the target monthly partition exists:
+**Whole days, from the archive.** Each run counts rows per `as_of` over the last `backfill_days` (14) and loads, oldest first, every day that is absent or holds under 95 % of the fullest day in the window. A day comes from FIRST's daily archive (`epss_scores-YYYY-MM-DD.csv.gz`, back to 2021) and is written in one transaction: delete whatever the lake held, `COPY` the file, commit; the run refuses to commit fewer rows than the day already had. Today's file is simply absent (404) until FIRST publishes it and is picked up by a later run; the poll is 6h so that is hours, not a day. The file's `score_date` comment is checked against the requested date.
+
+**Why not the API.** The paginated API this replaced (77 pages of 5,000) left 28 September 2026 at 247,569 of ~380,000 rows when a run died mid-way, and its "date already exists → skip" check meant the day could never complete; 30 September was never loaded at all. The 24h-from-start schedule also drifted ~3 minutes a day. The archive load is all-or-nothing, self-healing and schedule-independent.
+
+**Partition Auto-Creation:** Before each load, ensures the target monthly partition exists:
 ```sql
 CREATE TABLE IF NOT EXISTS epss_daily_y2026m03
 PARTITION OF epss_daily
@@ -344,9 +350,7 @@ FOR VALUES FROM ('2026-03-01') TO ('2026-04-01')
 
 **Partition Retention:** The `[maintenance]` worker (`internal/maintenance`) drops a monthly partition once every day in it is more than `epss_retention_days` (production: 90) behind the newest snapshot, so the table holds 90 to ~120 days (~6-8 GB) instead of growing ~2 GB a month. The cutoff is anchored on `max(as_of)`, not the wall clock, so a stalled ingest cannot cause the remaining history to be pruned. Each `DROP` runs under a 5s `lock_timeout` and is retried on the next cycle if a long reader holds the table. Older days remain available from FIRST's daily archive. Metrics: `tigerfetch_maintenance_runs_total`, `tigerfetch_maintenance_partitions_dropped_total`.
 
-**Bulk Performance:** Uses PostgreSQL `COPY FROM` protocol via `pgx.CopyFrom()` for high-throughput loading (~300k records per daily snapshot).
-
-**Polling:** Default 24 hours. Skips entirely if today's date already exists.
+**Polling:** 6h. A complete day is never fetched again; each run costs one small catalogue query plus one file per missing day.
 
 **Materialisation back to `cve_enriched`:** Migration `20260516_materialize_epss_to_cve_enriched.sql` introduced a PL/pgSQL function `materialize_epss_to_cve_enriched()` that pulls the latest score per CVE from the `epss_daily` partitions and writes it to `cve_enriched.epss`. Idempotent (only updates rows whose score actually changed). Coverage went from 0 % → 95 % on first run. Since `20260904120300` it touches `source = 'NVD'` rows only, so the legacy KEV mirror rows no longer receive nightly scores.
 
@@ -641,14 +645,15 @@ tags            = ["government", "alerts"]
 | `nvd_rate_limits_total` | Counter | — | HTTP 429/503 responses |
 | `nvd_api_errors_total` | Counter | status_code | Non-retryable API errors |
 | `nvd_run_duration_seconds` | Histogram | — | Full run wall time |
-| `nvd_cursor_lag_seconds` | Gauge | — | Seconds behind real-time |
+| `nvd_cursor_lag_seconds` | Gauge | — | Publication cursor, seconds behind real-time |
+| `nvd_modified_cursor_lag_seconds` | Gauge | — | Modification cursor, seconds behind real-time |
 | `kev_fetches_total` | Counter | status | KEV fetch outcomes |
 | `kev_vulns_processed_total` | Counter | — | KEV vulns upserted |
 | `kev_run_duration_seconds` | Histogram | — | Full run wall time |
 | `kev_cursor_lag_seconds` | Gauge | — | Seconds behind latest catalog |
-| `epss_runs_total` | Counter | status | EPSS run outcomes (success/error/skipped) |
+| `epss_runs_total` | Counter | status | EPSS run outcomes (success/error) |
 | `epss_records_processed_total` | Counter | — | EPSS records bulk-loaded |
-| `epss_pages_fetched_total` | Counter | — | API pages retrieved |
+| `epss_days_loaded_total` | Counter | reason | Days loaded whole: new / backfill / repair |
 | `epss_run_duration_seconds` | Histogram | — | Full run wall time |
 | `epss_cursor_lag_seconds` | Gauge | — | Seconds behind latest date |
 
@@ -946,7 +951,7 @@ Each data source goroutine is fully independent:
 | Feeds | `ON CONFLICT (guid, feed_url) DO UPDATE` on current | Latest version always wins |
 | NVD | Cursor in `ingest_state` + `ON CONFLICT` on cve_enriched | Re-processing is safe |
 | KEV | Catalog version comparison before processing | Unchanged catalog skipped |
-| EPSS | Date existence check in `epss_daily` | Same day never re-loaded |
+| EPSS | Row count per day against the window | A complete day is never re-fetched; a short one is replaced whole |
 
 ---
 
@@ -1036,7 +1041,8 @@ go 1.26.0, toolchain go1.26.1
 | `TestFetchAndSave_HTTPError` | Upstream 500 returns descriptive error |
 | `TestNvdRunner_Integration` | Full workflow: fetch, parse, save, cursor advance |
 | `TestKevRunner_Integration` | Catalog sync, version comparison, state persistence |
-| `TestEpssRunner_Integration` | Pagination, partition creation, bulk COPY FROM |
+| `TestEpssRunner_Integration` | Short-day repair, missing-day backfill, today-not-yet-published, refusal of a shorter or mislabelled file |
+| `TestNvdRunner_ModifiedPass` | Modification pass overwrites the publication-time record and keeps its own cursor |
 
 ### 14.3 CI Test Infrastructure
 

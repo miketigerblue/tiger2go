@@ -105,7 +105,12 @@ var NvdRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 
 var NvdCursorLag = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "tigerfetch_nvd_cursor_lag_seconds",
-	Help: "Seconds between NVD cursor and now.",
+	Help: "Seconds between the NVD publication cursor and now.",
+})
+
+var NvdModifiedCursorLag = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "tigerfetch_nvd_modified_cursor_lag_seconds",
+	Help: "Seconds between the NVD modification cursor and now.",
 })
 
 // ---------------------------------------------------------------------------
@@ -122,10 +127,10 @@ var EpssRecordsProcessed = promauto.NewCounter(prometheus.CounterOpts{
 	Help: "Total EPSS rows inserted.",
 })
 
-var EpssPagesFetched = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "tigerfetch_epss_pages_fetched_total",
-	Help: "EPSS API pages fetched.",
-})
+var EpssDaysLoaded = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "tigerfetch_epss_days_loaded_total",
+	Help: "EPSS days loaded whole from the archive (new = today's, backfill = a missing past day, repair = a short day reloaded).",
+}, []string{"reason"})
 
 var EpssRunDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 	Name:    "tigerfetch_epss_run_duration_seconds",

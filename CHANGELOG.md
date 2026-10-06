@@ -11,6 +11,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### NVD modification pass — `internal/cve/nvd.go`, `nvd.modified_since`
+- The runner only ever asked NVD for `pubStartDate`/`pubEndDate`, so a
+  record was captured once, at publication, and the analysis NVD adds
+  later never arrived: CVSS, CPE applicability, `vulnStatus`
+  transitions, SSVC. Found 2026-10-06: of 17,756 rows with a status none
+  was `Analyzed` (15,170 `Received`, 2,275 of them over 30 days old),
+  27,743 NVD rows had no CVSS, and no CVE older than 30 days had been
+  touched in a week. Every consumer ranking on `cve_enriched` was
+  ranking on publication-day data.
+- Each run now makes a second pass over `lastModStartDate`/
+  `lastModEndDate` with its own cursor (`NVD-MODIFIED` in
+  `ingest_state`). First start is `nvd.modified_since`, or one 120-day
+  window back when unset. Production sets 2026-01-01 for a one-off
+  re-sync: about three API windows and one `cve_enriched_history` row
+  per changed record.
+- Metric: `tigerfetch_nvd_modified_cursor_lag_seconds`.
+
+#### Rejected backfill, second attempt — migration `20261006220000_mark_legacy_rejected_v2.sql`
+- `20260904120100` matched the NVD 1.x prefix `** REJECT **`; no row in
+  the lake carries it. NVD 2.0 writes `Rejected reason:`, which 18,301
+  descriptions start with, 18,162 of them still `vuln_status IS NULL`
+  (65 with an EPSS score). Same update with the right prefix, with the
+  history trigger off for the statement so 18k audit rows are not
+  stamped with the migration time.
+
+### Changed
+
+#### EPSS loads whole days from FIRST's archive — `internal/cve/epss.go`, `[epss]` config
+- The paginated API path left 28 September 2026 at 247,569 of ~380,000
+  rows when a run died mid-way, and the "date already exists → skip"
+  check meant the day could never complete; 30 September was never
+  loaded. The 24h-from-start schedule also drifted ~3 minutes a day and
+  had walked across midnight.
+- Days now come from `epss_scores-YYYY-MM-DD.csv.gz`, one file per
+  date, written in one transaction (delete what the lake held, `COPY`
+  the file, commit). Each run looks back `backfill_days` (14) and
+  reloads any day that is missing or under 95 % of the fullest day in
+  the window, so the first run after deploy repairs 28 September and
+  fills 30 September on its own. Today's file is 404 until FIRST
+  publishes it and is picked up by a later run; poll is 6h.
+- Config: `url`/`page_size` replaced by `archive_url`/`backfill_days`.
+  Metric `epss_pages_fetched_total` replaced by
+  `epss_days_loaded_total{reason=new|backfill|repair}`.
+
+#### KEV polls hourly — `Config.production.toml`
+- Was 24h, so additions to the catalogue could sit a day behind.
+
 #### EPSS partition retention — `internal/maintenance`, `[maintenance]` config
 - `epss_daily` was 57% of the lake (9.0 of 15.7 GB) and growing ~2 GB a
   month with nothing pruning it. No reader needs a full snapshot more

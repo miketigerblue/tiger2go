@@ -419,6 +419,10 @@ enabled        = true
 poll_interval  = "1h"
 page_size      = 2000
 api_key        = "REDACTED_API_KEY"
+# First start of the modification pass (lastModStartDate), RFC3339.
+# Unset = 120 days back. Set it earlier for a one-off re-sync of records
+# NVD has analysed, re-scored or rejected since then.
+# modified_since = "2026-01-01T00:00:00Z"
 # Optional filters (uncomment/set as needed)
 # cpe_name       = "cpe:2.3:o:microsoft:windows_10:1607:*:*:*:*:*:*:*"
 # cve_id         = "CVE-2022-XXXXX"
@@ -432,13 +436,16 @@ poll_interval = "15m"
 
 [epss]
 enabled       = true
-poll_interval = "24h"
-url           = "https://api.first.org/data/v1/epss"
-page_size     = 5000
+poll_interval = "6h"
+# FIRST's daily archive, one gzipped CSV per score date; {date} is
+# YYYY-MM-DD. Days are loaded whole, and any day in the last
+# backfill_days that is missing or short is reloaded.
+archive_url   = "https://epss.empiricalsecurity.com/epss_scores-{date}.csv.gz"
+backfill_days = 14
 
 [kev]
 enabled       = true
-poll_interval = "24h"
+poll_interval = "1h"
 url           = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
 # ----------------------------------------------------------------------

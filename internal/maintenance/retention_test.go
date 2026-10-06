@@ -149,7 +149,8 @@ func TestRunner_Integration(t *testing.T) {
 	ctx := context.Background()
 	pool, err := db.NewPool(ctx, databaseURL)
 	require.NoError(t, err)
-	defer pool.Close()
+	// Registered before the table cleanups so it runs after them (LIFO).
+	t.Cleanup(pool.Close)
 
 	cfg := config.MaintenanceConfig{Enabled: true, EpssRetentionDays: 90}
 	today := time.Now().UTC().Truncate(24 * time.Hour)

@@ -218,16 +218,29 @@ enabled       = true
 poll_interval = "1h"
 page_size     = 2000
 # api_key comes from NVD_API_KEY env
+# Where the modification pass (lastModStartDate) starts the first time it
+# runs. Everything in the lake was captured at publication only, so this
+# one-off walk from January re-fetches what NVD has analysed, re-scored
+# or rejected since: roughly 3 API windows, an hour or so of pages, and
+# one cve_enriched_history row per changed record. Ignored once the
+# NVD-MODIFIED cursor exists in ingest_state.
+modified_since = "2026-01-01T00:00:00Z"
 
 [epss]
 enabled       = true
-poll_interval = "24h"
-url           = "https://api.first.org/data/v1/epss"
-page_size     = 5000
+# Loads whole days from FIRST's daily archive; a day is complete or
+# absent, never partial. Each run also reloads any day in the last
+# backfill_days that is missing or short. 6h so today's file is picked
+# up within hours of FIRST publishing it, whatever time that is.
+poll_interval = "6h"
+archive_url   = "https://epss.empiricalsecurity.com/epss_scores-{date}.csv.gz"
+backfill_days = 14
 
 [kev]
 enabled       = true
-poll_interval = "24h"
+# Hourly: KEV additions are the hottest signal in the lake and the
+# catalogue is a 2 MB file. Was 24h.
+poll_interval = "1h"
 url           = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
 [osv]
