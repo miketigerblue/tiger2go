@@ -255,7 +255,9 @@ func (r *EpssRunner) fetchArchive(ctx context.Context, date time.Time) (io.ReadC
 	switch resp.StatusCode {
 	case http.StatusOK:
 		return resp.Body, nil
-	case http.StatusNotFound:
+	case http.StatusNotFound, http.StatusForbidden:
+		// The archive is an object store that answers 403, not 404, for a
+		// key that does not exist yet. Either way: not published.
 		_ = resp.Body.Close()
 		return nil, errEpssNotPublished
 	default:

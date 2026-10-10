@@ -162,12 +162,14 @@ func TestEpssCSVSource(t *testing.T) {
 	})
 }
 
-// archive is a fake FIRST archive: files by date, 404 otherwise, and a
-// log of what was asked for.
+// archive is a fake FIRST archive: files by date, a log of what was
+// asked for, and 403 for anything else, which is what the real object
+// store returns for a date it does not have yet (404 is handled too).
 type archive struct {
-	mu    sync.Mutex
-	files map[string][]byte
-	asked []string
+	mu      sync.Mutex
+	files   map[string][]byte
+	asked   []string
+	missing int // status for an absent date; 0 means 403
 }
 
 func (a *archive) handler() http.HandlerFunc {
@@ -179,7 +181,11 @@ func (a *archive) handler() http.HandlerFunc {
 		body, ok := a.files[date]
 		a.mu.Unlock()
 		if !ok {
-			w.WriteHeader(http.StatusNotFound)
+			if a.missing == 0 {
+				w.WriteHeader(http.StatusForbidden)
+			} else {
+				w.WriteHeader(a.missing)
+			}
 			return
 		}
 		_, _ = w.Write(body)
@@ -276,6 +282,14 @@ func TestEpssRunner_Integration(t *testing.T) {
 		// Second run: nothing to do but ask for the two absent days again.
 		require.NoError(t, newRunner(a, "2100-01-10").Run(ctx))
 		assert.Equal(t, 3, count("2100-01-07"))
+	})
+
+	t.Run("a plain 404 for today is also just not published yet", func(t *testing.T) {
+		cleanup()
+		seed("2100-01-06", 3)
+		a := &archive{files: map[string][]byte{}, missing: http.StatusNotFound}
+		require.NoError(t, newRunner(a, "2100-01-07").Run(ctx))
+		assert.Equal(t, 0, count("2100-01-07"))
 	})
 
 	t.Run("keeps the lake's copy when the archive is shorter", func(t *testing.T) {
