@@ -4,18 +4,27 @@
 
 # TigerFetch Data Insights
 
-> Two snapshots below. The **current** snapshot (2026-05-17) is the
-> live lake after the Tier-1 ingestors landed and the May-2026 legacy
-> migration completed. The **2026-04-12 baseline** is preserved below
-> for trend comparison.
+> Historical snapshots from **17 May 2026** and **12 April 2026**.
+> Interpretations corrected on **14 October 2026**. The original measurements
+> have not been rerun for this editorial update; they are not current lake totals.
+
+## How to read these snapshots
+
+**EPSS** estimates the probability of exploitation activity for a CVE over the next 30 days. A high score is not proof that exploitation has occurred. A low score does not establish safety. [FIRST: EPSS](https://www.first.org/epss/)
+
+**CVSS Base** describes technical severity. It does not, alone, establish risk to a particular environment. [FIRST: CVSS guidance](https://www.first.org/cvss/v4.0/user-guide)
+
+Prioritisation also depends on whether an affected product and version are present, their exposure and business importance, available controls, and evidence of known exploitation. EPSS is one input to that decision. [FIRST: EPSS FAQ](https://www.first.org/epss/faq)
+
+Counts below describe the retained dataset and the stated selection rules. Feed coverage, missing dates, model versions and changes in the scored population can affect comparisons. The historical snapshots do not establish overall attacker activity or compromise of any particular system.
 
 ---
 
 ## Snapshot — 2026-05-17 (v1.4.0)
 
-> **Source:** Local dev container (`localhost:5432/tiger2go`). All numbers below come from a single point-in-time query; reproducible via `mcp__pg-introspect-tiger2go__run_query` or `psql` against the same DSN.
+**Recorded source:** the local Tiger2Go database after the Tier-1 ingestors and May migration. Historical values are preserved below; rerunning queries against a changed database will not necessarily reproduce this snapshot.
 
-### 0.1 Lake at a glance
+### Lake at a glance
 
 | Domain | Volume | Notes |
 |---|---|---|
@@ -25,49 +34,45 @@
 | `ghsa_advisories` | 333,301 | 329,645 carry a `cve_id` link |
 | `osv_vulns` | 264,026 | PyPI alone: 19,564 |
 | `nuclei_templates` | 5,558 | 1,610 critical-severity |
-| `msf_modules` | 6,632 | 1,664 excellent/great-rank (weaponised) |
+| `msf_modules` | 6,632 | 1,664 modules with excellent/great rank |
 | `urlhaus_urls` | 25,784 | 2,155 currently online |
 | `threatfox_iocs` | 3,488 | 7-day rolling window |
 | `malwarebazaar_samples` | 319 | 60-min rolling window |
 | `analysis` (tiger-eye) | 2,595 | 290 enriched in last 7 days |
 | `sbom_packages` (tiger-watch) | 478 | across 18 watchlisted services |
 
-### 0.2 The risk pyramid (current)
+### EPSS distribution
 
-EPSS distribution across the 351,177 CVEs in `cve_enriched`:
+The original distribution reports **351,177 CVEs**. Its bands are score ranges, not severity labels or recommended remediation deadlines.
 
-```
-           /\           8,054 CVEs  ( 2.3%)   Critical  >= 50% exploitation probability
-          /  \
-         /    \        15,854 CVEs  ( 4.5%)   High      10 - 50%
-        /      \
-       /        \      53,083 CVEs  (15.1%)   Medium     1 - 10%
-      /          \
-     /            \   165,909 CVEs  (47.2%)   Low        0.1 - 1%
-    /              \
-   /________________\ 108,277 CVEs  (30.8%)   Negligible < 0.1%
-```
+| Reported EPSS score | CVEs | Share |
+|---|---:|---:|
+| ≥ 50% | 8,054 | 2.3% |
+| 10% to < 50% | 15,854 | 4.5% |
+| 1% to < 10% | 53,083 | 15.1% |
+| 0.1% to < 1% | 165,909 | 47.2% |
+| < 0.1% | 108,277 | 30.8% |
 
-Compared to the April baseline: the critical band has grown from 7,123 → 8,054 (+13.1 %) and overall CVE count from 326k → 351k (+7.7 %). The 2.3 % "critical" share is roughly stable.
+The volume table reports 351,175 NVD records while this distribution totals 351,177. That two-record discrepancy is retained explicitly rather than silently treating the populations as identical.
 
-### 0.3 Apex predators
+The ≥ 50% band increased from 7,123 in the April baseline to 8,054 in May, a 13.1% increase. The reported scored population also grew. This is a comparison of two dataset snapshots, not an estimate of growth in actual exploitation.
 
-CVEs with **EPSS ≥ 90 % AND CVSS ≥ 9.0** — both the model and the static score agree these are severe and actively exploited: **719 entries** as of this snapshot. These are the patching priority-1 list.
+### High severity and high predicted likelihood
 
-### 0.4 What the new sources reveal
+The snapshot reports **719 entries with EPSS ≥ 90% and CVSS ≥ 9.0**. This identifies a set for closer review. Neither the conjunction of these scores nor its size establishes active exploitation, affected assets in a specific estate, or a universal patching order.
 
-The Tier-1 ingestors let analysts answer questions tigerfetch couldn't before:
+### What the additional sources make queryable
 
-- **"Is there a Metasploit module?"** — 1,664 weaponised modules (excellent + great rank); join via `msf_modules.cves[]`.
-- **"Is there a Nuclei template?"** — 5,558 templates covering 4,103 distinct CVEs; signals the "scanner commodity" threshold has been crossed.
-- **"Does our SBOM contain any of this?"** — `sbom_packages × osv_vulns × ghsa_advisories` with proper version-range evaluation in tiger-watch.
-- **"What's hot right now?"** — `threatfox_iocs.first_seen > now() - '24 hours'` grouped by `malware_printable` produces the ClearFake/Cobalt Strike/VShell live-campaign ranking that powers the o2 voice agent.
+- **Metasploit:** the snapshot records 1,664 modules with excellent/great rank. The `cves[]` mapping can connect modules to CVEs; module availability does not establish observed attacks.
+- **Nuclei:** 5,558 templates cover 4,103 distinct CVEs in the recorded snapshot. A template is a detection or testing resource, not proof of exploitation.
+- **Package exposure:** `sbom_packages`, OSV and GHSA can support affected-package matching when version ranges and package identity are evaluated.
+- **IOC reporting:** ThreatFox records can be grouped by first-seen time and malware label. Those counts describe reports visible through that feed, not the size or prevalence of a campaign.
 
 ---
 
 ## Snapshot — 2026-04-12 (historical baseline, v1.2.0)
 
-### 1. Dataset at a Glance
+### Dataset at a glance
 
 | Domain | Volume | Coverage |
 |--------|--------|----------|
@@ -76,79 +81,54 @@ The Tier-1 ingestors let analysts answer questions tigerfetch couldn't before:
 | Feed articles | 10,384 articles | 26 feeds across 8 countries |
 | CISA KEV | Tracked via cursor | Known-exploited subset of NVD |
 
-### Pipeline Status (as of snapshot)
+The original notes say this database was first populated on **4 March 2026**, while its retained article dates reach back to September 2025. Historical article dates therefore cannot establish how long this database was ingesting or continuously available.
 
-| Pipeline | First Ingestion | Latest Cursor | Coverage |
-|----------|-----------------|---------------|----------|
-| Feed articles | 2025-09-13 | 2026-04-11 | Continuous |
-| EPSS daily | 2026-03-04 | 2026-04-11 | 32 of 39 days |
-| NVD | 2026-03-04 | 2026-04-12 | Continuous |
-| CISA KEV | 2026-03-04 | 2026-04-08 | Continuous |
+The notes report EPSS coverage for **32 of 39 days**, including only 4 of the first 11 April dates at that snapshot. They attribute gaps to downtime and a pagination defect, with backfill planned. This record does not verify when each gap was subsequently filled.
 
-The database was first populated on **March 4, 2026**. The archive table contains articles backdated to September 2025 because RSS feeds serve historical items, but live ingestion has been running for 39 days.
+### EPSS distribution
 
-EPSS gaps: April partition has data for 4 of 11 days (Apr 1, 2, 4, 11). Missing days (Apr 3, 5-10) are due to container downtime during code review fixes and a pagination bug that produced partial ingestions (since cleaned up). These will backfill automatically on the next EPSS cycle.
+Reported scores as of **11 April 2026**, across **326,508 CVEs**:
 
----
+| Reported EPSS score | CVEs | Share |
+|---|---:|---:|
+| ≥ 50% | 7,123 | 2.2% |
+| 10% to < 50% | 15,560 | 4.8% |
+| 1% to < 10% | 52,408 | 16.1% |
+| 0.1% to < 1% | 160,993 | 49.3% |
+| < 0.1% | 90,424 | 27.7% |
 
-## 2. The Risk Pyramid
+The 2.2% figure is the share of this scored population above a chosen threshold. It is not an observed exploitation rate, and the remainder should not be dismissed as noise. Asset relevance and other evidence can justify action below that threshold.
 
-EPSS risk distribution as of April 11, 2026 (326,508 CVEs scored):
+### Historical score movements
 
-```
-           /\           7,123 CVEs  ( 2.2%)   Critical  >= 50% exploitation probability
-          /  \
-         /    \        15,560 CVEs  ( 4.8%)   High      10 - 50%
-        /      \
-       /        \      52,408 CVEs  (16.1%)   Medium     1 - 10%
-      /          \
-     /            \   160,993 CVEs  (49.3%)   Low        0.1 - 1%
-    /              \
-   /________________\  90,424 CVEs  (27.7%)   Negligible < 0.1%
-```
+The following reported scores moved from below 1% to above 50% between 4 March and 11 April. Changes are shown in **percentage points**, calculated from the displayed rounded scores.
 
-**Only 2.2% of all CVEs have a >= 50% chance of being exploited.** Those 7,123 vulnerabilities are where defenders should focus. The remaining 97.8% are noise at any given point in time — though individual CVEs can move between bands rapidly (see below).
+| CVE | EPSS 4 Mar | EPSS 11 Apr | Change (percentage points) | Recorded description |
+|---|---:|---:|---:|---|
+| CVE-2025-71243 | 0.11% | 83.68% | +83.57 | SPIP plugin Remote Code Execution |
+| CVE-2025-50286 | 0.90% | 58.40% | +57.50 | Grav CMS malicious plugin upload RCE |
+| CVE-2024-28752 | 0.59% | 55.15% | +54.56 | Apache CXF SSRF |
+| CVE-2023-34092 | 0.46% | 55.11% | +54.65 | Vite dev server path traversal |
+| CVE-2025-69516 | 0.11% | 53.16% | +53.05 | Tactical RMM Jinja2 SSTI |
 
----
+These are changes in model estimates, not observed attack counts. The table does not identify the cause of each movement, verify the descriptions against current vendor advisories, or provide percentile values. Longitudinal storage makes those changes inspectable; determining their significance requires additional evidence.
 
-## 3. Sleeper CVEs — From Noise Floor to Critical
-
-The most operationally significant finding in the dataset: CVEs that went from **< 1% EPSS to > 50%** in 38 days. The EPSS model detected a change in real-world exploitability that static CVSS scores could never signal.
-
-| CVE | EPSS Mar 4 | EPSS Apr 11 | Change | Description |
-|-----|-----------|-------------|--------|-------------|
-| CVE-2025-71243 | 0.11% | **83.68%** | +75,284% | SPIP plugin Remote Code Execution |
-| CVE-2025-50286 | 0.90% | **58.40%** | +6,425% | Grav CMS malicious plugin upload RCE |
-| CVE-2024-28752 | 0.59% | **55.15%** | +9,248% | Apache CXF SSRF |
-| CVE-2023-34092 | 0.46% | **55.11%** | +11,854% | Vite dev server path traversal |
-| CVE-2025-69516 | 0.11% | **53.16%** | +49,580% | Tactical RMM Jinja2 SSTI |
-
-CVE-2025-71243 increased **75,000%** — from background noise to the 97th percentile. These are the signals TigerFetch exists to surface.
-
----
-
-## 4. Threat Velocity — Weekly Movement
-
-In the 5-day window from April 6 to April 11:
+### Movement over 6–11 April
 
 | Metric | Count |
 |--------|-------|
-| CVEs surging (EPSS up > 50% relative, starting above 0.1%) | **677** |
-| CVEs crossed 50% critical threshold | **18** |
-| CVEs crossed 10% high threshold | **64** |
-| CVEs falling fast (EPSS down > 50% relative) | 63 |
+| CVEs with rising scores (EPSS up > 50% relative, starting above 0.1%) | **677** |
+| CVEs crossed 50% EPSS threshold | **18** |
+| CVEs crossed 10% EPSS threshold | **64** |
+| CVEs with falling scores (EPSS down > 50% relative) | 63 |
 
-The threat surface is **expanding, not contracting** — surges outnumber declines 10:1.
+The recorded counts show more rising than falling scores under these selection rules in this five-day window. They do not establish that the attack surface expanded, that exploitation increased by the same ratio, or that the pattern holds in other weeks.
 
-### CVE Growth Rate
+The snapshot also reports **8,243 additional CVEs in the scored population** between 4 March and 11 April: about **217 per day** over the 38-day interval. Additions to that population need not all be newly disclosed vulnerabilities.
 
-**8,243 new CVEs** entered the EPSS tracking universe between March 4 and April 11 — approximately **217 new CVEs per day**. The firehose does not slow down.
+### Weakness classes in the selected higher-score cohort
 
----
-
-## 5. Most Exploitable Weakness Classes
-
-Joining NVD CWE classifications with EPSS scores for CVEs above 10% exploitation probability:
+The original query joined NVD CWE classifications with CVEs whose EPSS exceeded 10%.
 
 | CWE | Weakness | CVEs | Avg EPSS | Avg CVSS |
 |-----|----------|------|----------|----------|
@@ -160,13 +140,11 @@ Joining NVD CWE classifications with EPSS scores for CVEs above 10% exploitation
 | CWE-89 | SQL Injection | 594 | 51.8% | 9.0 |
 | CWE-502 | Deserialization of Untrusted Data | 257 | 51.0% | 9.0 |
 
-**SSRF (CWE-918) has the highest average exploit probability** despite a relatively modest CVSS of 7.9. This is the "CVSS says High, reality says Critical" gap that longitudinal EPSS data reveals. SQL Injection has the most CVEs in the high-risk zone (594), but SSRF is exploited more consistently.
+Within this selected cohort, SSRF has the highest reported mean EPSS. Conditioning on scores above 10% excludes lower-scoring CVEs in each class. These averages therefore do not rank exploitation frequency across all weaknesses or show that SSRF is exploited more consistently.
 
----
+### Examples combining high CVSS and EPSS
 
-## 6. The Apex Predators — Highest Combined Risk
-
-CVEs with **EPSS >= 50% AND CVSS >= 9.0** — both the model and the static score agree these are severe and actively exploited:
+The historical selection used **EPSS ≥ 50% and CVSS ≥ 9.0**:
 
 | CVE | EPSS | CVSS | Description |
 |-----|------|------|-------------|
@@ -181,24 +159,11 @@ CVEs with **EPSS >= 50% AND CVSS >= 9.0** — both the model and the static scor
 | CVE-2022-1388 | 94.5% | 9.8 | F5 BIG-IP iControl REST auth bypass |
 | CVE-2020-14882 | 94.5% | 9.8 | Oracle WebLogic console takeover |
 
-These are the "hall of fame" — well-known, heavily weaponised vulnerabilities that remain actively exploited years after disclosure. Any organisation exposing these products should treat them as **assumed-breached** if unpatched.
+These scores can support review of affected systems. The table does not contain dated exploitation evidence or host telemetry, so it cannot establish ongoing exploitation or compromise. Known-exploitation claims need their own source and date; response decisions also need actual asset and exposure context.
 
----
+### Feed composition
 
-## 7. Feed Intake Cadence
-
-Weekly article ingestion volume since September 2025:
-
-| Period | Avg Articles/Week | Notes |
-|--------|-------------------|-------|
-| Sep - Oct 2025 | ~38 | Initial feed set, low volume |
-| Nov 2025 | ~102 | Feed expansion |
-| Dec 2025 | ~220 | CERT-Bund, Debian, MSRC added |
-| Jan 2026 | ~270 | Steady state |
-| Feb 2026 | ~430 | Spike: 2,088 articles week of Feb 16 |
-| Mar - Apr 2026 | ~616 | Full 26-feed complement |
-
-### Top Feeds by Volume
+The original top-feed counts were:
 
 | Feed | Articles |
 |------|----------|
@@ -213,22 +178,17 @@ Weekly article ingestion volume since September 2025:
 | NCSC UK | 347 |
 | SANS ISC | 277 |
 
-Microsoft MSRC alone accounts for **33.5%** of all ingested articles, reflecting the breadth of the Windows/Azure/Office advisory surface.
+Microsoft MSRC accounts for approximately 33.5% of the 10,384 retained articles. That is a property of this corpus and its source selection, not Microsoft's share of the global threat landscape.
 
----
+The earlier version also presented article dates from September 2025 as an ingestion-growth timeline. Because the same notes say this database started in March 2026 and received historical items, that timeline has been removed: publication history and ingestion history are different measurements.
 
-## 8. Key Takeaways
+## What these snapshots support
 
-1. **CVSS lies, EPSS doesn't.** Static severity scores miss what attackers actually target. SSRF averages 66% exploitation probability at CVSS 7.9 — while many CVSS 9.8 vulnerabilities sit below 1% EPSS.
+- A dated account of source coverage and the distribution of recorded scores.
+- Investigation of score changes, with the scoring population and missing days made explicit.
+- Joining vulnerability evidence to affected products, packages and exposure.
+- Questions for deeper analysis, without converting model scores or feed counts into claims of confirmed attacks.
 
-2. **The sleeper pattern is the killer feature.** CVEs that jump from noise floor to critical in days are the signals that justify a longitudinal EPSS dataset. Point-in-time snapshots miss the trajectory.
+For the engineering work behind the May migration, see [Migrating a threat intelligence lake without losing its history](https://github.com/miketigerblue/miketigerblue/blob/main/evidence/2026-05-lake-migration.md).
 
-3. **The 2.2% rule.** Only 7,123 of 326,508 scored CVEs have a >= 50% chance of exploitation. Prioritisation should start there, not with "all criticals."
-
-4. **217 new CVEs per day.** The vulnerability universe grows by ~1,500/week. Without automated ingestion and scoring, manual triage is impossible at scale.
-
-5. **Threat velocity is net-positive.** Surging CVEs outnumber declining ones 10:1 in any given week. The attack surface expands faster than it contracts.
-
----
-
-*Generated from 39 days of TigerFetch ingestion data. Queries available in the repo for reproduction against any TigerFetch PostgreSQL instance.*
+*This revision corrects interpretation and presentation. It preserves reported historical measurements, flags unresolved population differences, and does not claim a fresh validation of the underlying snapshots.*
