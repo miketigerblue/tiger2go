@@ -1,4 +1,4 @@
-# Tiger2Go — System Summary (MBSE 2.0 Aligned)
+# TigerFetch — System Summary (MBSE 2.0 Aligned)
 
 ## 1. Strategic Justification & NIS2 Market Drivers
 
@@ -9,13 +9,13 @@ Organisations that provide services to **Critical National Infrastructure (CNI)*
 1. **Threat-landscape velocity.** The volume of disclosed vulnerabilities exceeded 29,000 CVEs in 2023 and continues to accelerate. No single feed covers the full picture; actionable intelligence is scattered across government CERTs, vendor advisories, exploit databases, and community analysis. Manual aggregation is unsustainable.
 2. **Regulatory obligation.** The **EU NIS2 Directive** (Directive 2024/2555), transposed into Member State law from October 2024, extends cybersecurity duties beyond CNI operators themselves to their **supply chain and service providers**. Articles 21 and 23 impose explicit requirements for vulnerability handling, incident reporting, and supply-chain risk management — all of which depend on timely, structured threat intelligence.
 
-Tiger2Go exists to close this gap: a self-hosted, auditable, continuously-running OSINT aggregation engine that feeds downstream security operations with normalised, enriched vulnerability data — at machine speed and at a fraction of the cost of commercial threat-intel platforms.
+TigerFetch exists to close this gap: a self-hosted, auditable, continuously-running OSINT aggregation engine that feeds downstream security operations with normalised, enriched vulnerability data — at machine speed and at a fraction of the cost of commercial threat-intel platforms.
 
 ### 1.2 NIS2 Compliance Mapping
 
-The table below maps Tiger2Go capabilities to specific NIS2 obligations relevant to **providers of services to essential and important entities**:
+The table below maps TigerFetch capabilities to specific NIS2 obligations relevant to **providers of services to essential and important entities**:
 
-| NIS2 Article / Obligation | Requirement Summary | Tiger2Go Capability | How It Helps |
+| NIS2 Article / Obligation | Requirement Summary | TigerFetch Capability | How It Helps |
 |:---|:---|:---|:---|
 | **Art. 21(2)(a)** — Risk analysis & information system security policies | Entities must adopt policies for risk analysis including vulnerability management | C1 (RSS Ingestion), C2 (NVD), C3 (KEV) | Continuous aggregation of vulnerability disclosures across 22+ authoritative sources provides the raw material for risk-based prioritisation |
 | **Art. 21(2)(d)** — Supply-chain security | Security of the supply chain, including security-related aspects of relationships between each entity and its direct suppliers or service providers | C2 (NVD enrichment), C4 (EPSS scoring) | CVE-level enrichment with CVSS severity and EPSS exploit-probability scores enables supply-chain partners to prioritise shared-component vulnerabilities |
@@ -27,7 +27,7 @@ The table below maps Tiger2Go capabilities to specific NIS2 obligations relevant
 
 ### 1.3 Value Proposition (OSINT Threat Intelligence)
 
-| Dimension | Commercial TI Platform | Tiger2Go |
+| Dimension | Commercial TI Platform | TigerFetch |
 |:---|:---|:---|
 | **Annual cost** | £50k–£250k+ per seat/tier | Infrastructure cost only (~£5–15/month on Fly.io + managed Postgres) |
 | **Data sovereignty** | Vendor-controlled SaaS; data leaves your perimeter | Self-hosted; data never leaves your infrastructure |
@@ -38,7 +38,7 @@ The table below maps Tiger2Go capabilities to specific NIS2 obligations relevant
 
 ### 1.4 Target Operating Model
 
-Tiger2Go is designed to sit at **Layer 1 (Collection & Normalisation)** of a defence-in-depth threat intelligence programme:
+TigerFetch is designed to sit at **Layer 1 (Collection & Normalisation)** of a defence-in-depth threat intelligence programme:
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -51,18 +51,18 @@ Tiger2Go is designed to sit at **Layer 1 (Collection & Normalisation)** of a def
 │  Layer 2: Enrichment & Scoring                       │
 │  (CVSS, EPSS, KEV flags, asset-context join)         │
 ├──────────────────────────────────────────────────────┤
-│  Layer 1: Collection & Normalisation  ◀── Tiger2Go   │
+│  Layer 1: Collection & Normalisation  ◀── TigerFetch │
 │  (RSS/Atom, NVD API, KEV JSON, EPSS bulk)            │
 └──────────────────────────────────────────────────────┘
 ```
 
-Downstream consumers (SIEM, ticketing, GRC tools) query Tiger2Go's REST API or connect directly to PostgreSQL, inheriting structured, de-duplicated, time-stamped intelligence without needing to manage individual feed integrations themselves.
+Downstream consumers (SIEM, ticketing, GRC tools) query TigerFetch's REST API or connect directly to PostgreSQL, inheriting structured, de-duplicated, time-stamped intelligence without needing to manage individual feed integrations themselves.
 
 ---
 
 ## 2. System Purpose & Operational Context
 
-**Tiger2Go** (`tigerfetch`) is a high-performance **OSINT vulnerability ingestor** written in Go. It continuously aggregates, normalises, and enriches cybersecurity intelligence from heterogeneous public sources into a single PostgreSQL data store, making it queryable via a RESTful API layer (PostgREST) and observable through Prometheus/Grafana dashboards.
+**TigerFetch** (`tigerfetch`) is a high-performance **OSINT vulnerability ingestor** written in Go. It continuously aggregates, normalises, and enriches cybersecurity intelligence from heterogeneous public sources into a single PostgreSQL data store, making it queryable via a RESTful API layer (PostgREST) and observable through Prometheus/Grafana dashboards.
 
 The system was migrated from an earlier Rust implementation to Go for ecosystem alignment, broader contributor access, and simpler deployment.
 
@@ -219,7 +219,7 @@ An additional ~15 feeds are documented but disabled with inline rationale (404s,
 
 ## 11. Traceability Matrix (MBSE 2.0 Alignment)
 
-| MBSE 2.0 Concern | Tiger2Go Artefact |
+| MBSE 2.0 Concern | TigerFetch Artefact |
 |:---|:---|
 | **Strategic Justification** | NIS2 Art. 21/23 compliance for CNI service providers; OSINT cost advantage over commercial TI, Section 1 |
 | **Operational Need** | Unified, normalised cybersecurity intelligence lake |
@@ -256,7 +256,7 @@ An additional ~15 feeds are documented but disabled with inline rationale (404s,
 
 | Risk | Likelihood | Impact | Mitigation |
 |:---|:---|:---|:---|
-| **NIS2 non-compliance (Art. 21 vulnerability handling)** | Medium | Critical | Tiger2Go provides automated, auditable ingestion of NVD, KEV, and EPSS; QA views generate evidence of coverage for regulators |
+| **NIS2 non-compliance (Art. 21 vulnerability handling)** | Medium | Critical | TigerFetch provides automated, auditable ingestion of NVD, KEV, and EPSS; QA views generate evidence of coverage for regulators |
 | **NIS2 reporting timeline breach (Art. 23)** | Medium | Critical | Near-real-time ingestion from multi-CERT feeds (CISA, CERT-EU, NCSC) accelerates triage; API enables automated incident-detection pipelines |
 | **Loss of OSINT capability to commercial vendor lock-in** | Medium | High | Open-source, self-hosted, PostgreSQL-based — no single-vendor dependency; switching cost is zero |
 | Upstream feed URL breakage | High (observed Dec 2025) | Medium | Feeds disabled with inline notes; periodic validation script (`validate_feeds.sh`) |

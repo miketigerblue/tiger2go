@@ -1,4 +1,4 @@
-# Tiger2Go Developer Makefile
+# TigerFetch Developer Makefile
 
 .PHONY: all build run test clean lint sec audit trivy tools tools-clean fmt coverage help
 

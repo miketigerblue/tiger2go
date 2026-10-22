@@ -1,4 +1,4 @@
-# Tiger2Go: Rust to Go Migration Plan
+# TigerFetch: Rust to Go Migration Plan
 
 This document tracks the conversion of the `tigerfetch` Rust application to a Go-based architecture.
 
