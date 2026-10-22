@@ -22,7 +22,7 @@ Counts below describe the retained dataset and the stated selection rules. Feed 
 
 ## Snapshot — 2026-05-17 (v1.4.0)
 
-**Recorded source:** the local Tiger2Go database after the Tier-1 ingestors and May migration. Historical values are preserved below; rerunning queries against a changed database will not necessarily reproduce this snapshot.
+**Recorded source:** the local TigerFetch database (then named Tiger2Go) after the Tier-1 ingestors and May migration. Historical values are preserved below; rerunning queries against a changed database will not necessarily reproduce this snapshot.
 
 ### Lake at a glance
 

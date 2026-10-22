@@ -1,4 +1,4 @@
-# PostgREST — analyst surface over the tiger2go lake
+# PostgREST — analyst surface over the TigerFetch lake
 
 > **This directory is retained for historical reference.**
 > Canonical PostgREST deployment artefacts (Dockerfile, Fly config,

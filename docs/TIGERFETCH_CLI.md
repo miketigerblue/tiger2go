@@ -2,9 +2,9 @@
   <img src="../tigerfetch_hunt_the_signal.png" alt="TigerFetch" width="200" />
 </p>
 
-# tigerfetch CLI (Python) — security triage utility
+# TigerFetch CLI (Python) — security triage utility
 
-A small dependency-free Python CLI for interacting with the PostgREST surface over the tiger2go lake.
+A small dependency-free Python CLI for interacting with the PostgREST surface over the TigerFetch lake.
 
 - Script: `scripts/tigerfetch_cli.py`
 - Python: 3.9+ (stdlib only)

@@ -1,58 +1,37 @@
 <p align="center">
-  <img src="tigerfetch_hunt_the_signal.png" alt="TigerFetch — hunt the signal" width="400" />
+  <img src="tigerfetch_hunt_the_signal.png" alt="TigerFetch: hunt the signal" width="400" />
 </p>
 
-<h1 align="center">Tiger2Go - TigerFetch</h1>
+<h1 align="center">TigerFetch</h1>
 
-<p align="center"><em>hunt_the_signal()</em></p>
+<p align="center"><strong>Threat-intelligence ingestion for the TigerBlue platform.</strong><br /><em>hunt_the_signal()</em></p>
 
-> **Mission:** Provide a reliable, observable, single-binary cybersecurity OSINT ingestion service that continuously collects, normalises, and stores threat intelligence from public feeds and vulnerability databases — giving security teams a queryable data lake for risk-informed decision making.
+TigerFetch is a threat-intelligence ingestion engine written in Go. It collects security feeds, vulnerability records, software advisories and exploit signals into a structured PostgreSQL data store, giving security teams a common foundation for investigation and vulnerability prioritisation.
 
----
+It handles the operational work behind that intelligence: concurrent collection, source-specific rate limits, retries, sanitisation, deduplication, schema migrations and monitoring. The result is a queryable record of external threats that analysts and downstream services can relate to the software they actually run.
 
-## Why a Rust → Go port?
+## What it delivers
 
-Most ports you see out in the wild go **Go → Rust** (performance, memory safety signalling, “serious systems” vibes).
+- **Broad source coverage:** RSS/Atom, NVD, CISA KEV, FIRST EPSS, OSV, GitHub Security Advisories, Nuclei, Metasploit and abuse.ch feeds.
+- **A shared intelligence store:** normalised records in PostgreSQL, with vulnerability scores, known-exploitation signals, software package ranges and indicators available for downstream analysis.
+- **Operational visibility:** Prometheus metrics, health checks and provisioned Grafana dashboards for ingestion health, data coverage and threat intelligence.
+- **Actionable changes:** configurable alerts for sharp increases in EPSS exploitation-probability scores, delivered through Slack or generic webhooks.
+- **Straightforward deployment:** one Go binary with embedded database migrations, plus Docker Compose for the local stack.
 
-This project goes the other way on purpose.
+## Where it fits
 
-`tiger2go` repo is a Go port of **tigerfetch**, originally written in Rust. The goal here is not “Go is better than Rust”. It’s that **the dominant problem in this system is not memory ownership** - it’s *operational ingestion*:
+TigerFetch provides the collection layer of TigerBlue. Intelligence flows from external sources through ingestion and normalisation into PostgreSQL, where analysts and companion services can query it.
 
-- high-volume I/O (RSS/Atom, NVD JSON, KEV, daily EPSS)
-- untrusted inputs (feeds are user input in a trenchcoat)
-- concurrency + retries + backoff + rate limits
-- metrics, health, and long-running process behaviour
-- boring reliability under real-world failure modes
+| Name | Role |
+|---|---|
+| **TigerBlue** | The overall security-intelligence platform. |
+| **TigerFetch** | Collects, normalises and stores threat intelligence. This repository contains the Go ingestion service. |
+| **TigerEye** | Enriches and interprets intelligence, with retrieval for investigation. |
+| **TigerWatch** | Matches threat intelligence to products, versions and software bills of materials. |
 
-Go is simply a great fit for that shape:
+See the [system design](docs/SYSTEM_DESIGN.md) for the architecture, data model and ingestion semantics. The [engineering rationale](docs/ENGINEERING_RATIONALE.md) explains the Rust-to-Go migration.
 
-goroutines and a mature runtime make it easy to coordinate concurrent workers,
-and the resulting code tends to be globally readable and straightforward to operate.
-
-Rust is still excellent - especially when memory ownership and correctness under adversarial conditions *is* the main fight. In this system, that fight is mostly elsewhere: scheduling, ingestion hygiene, and observability.
-
-So the port direction is less “downgrade” and more **optimising for shipping and operating**. 
-
-A practical side-effect: the original Rust implementation had clear boundaries and explicit data flow. That makes the port tractable (and reviewable), because the architecture maps cleanly to Go.
-
-If you’re curious about the intended “layering” philosophy:
-
-- **Rust** shines for foundations (parsers, crypto, runtimes, very hot paths)
-- **Go** shines for control planes (ingestors, schedulers, services, metrics)
-- **Python** often shines for reasoning layers (enrichment, ML, semantic glue)
-
-`tiger2go` deliberately sits in that “control plane” zone.
-
-### Design focus
-
-Data sources → ingestion → normalisation → storage → downstream analysis
-
-- Sources: RSS/Atom, NVD, CISA KEV, EPSS
-- Ingestion: concurrent workers, rate limiting, retries/backoff
-- Hygiene: sanitisation, validation, idempotency/dedupe
-- Ops: `/metrics`, `/healthz`, migrations, deployability
-
-
+**Naming compatibility:** TigerFetch is the product name. The repository slug and Go module remain `tiger2go`; existing import paths, database names and deployment identifiers retain their current values. Use the names shown in the configuration and commands below when building or deploying.
 
 ## 🚀 Features
 
@@ -75,7 +54,7 @@ Data sources → ingestion → normalisation → storage → downstream analysis
     *   **abuse.ch MalwareBazaar** — sample feed (Auth-Key, shared with ThreatFox/URLhaus).
 *   **Sleeper CVE alerting** — detects CVEs that jump from < 10 % to ≥ 50 % EPSS over a configurable window; emits Slack Block Kit or generic JSON webhooks.
 
-### Plumbing
+### Storage and observability
 
 *   **Database**: PostgreSQL storage via `pgx/v5` connection pooling.
 *   **Migrations**: Embedded schema migrations via `pressly/goose`.
@@ -83,8 +62,8 @@ Data sources → ingestion → normalisation → storage → downstream analysis
 *   **Grafana dashboards** (all auto-provisioned from `grafana/dashboards/`):
     *   **TigerFetch Operations** — Prometheus-powered: feed health, all 11 ingestor pipelines, upstream HTTP latency, DB pool, Go runtime, sleeper-CVE alerting outcomes. Includes a "Tier-1 Threat-Intel Sources" row.
     *   **Threat Intelligence** — SQL-powered: EPSS top 25, CVSS × EPSS danger zone, NVD severity landscape, CISA KEV catalogue, OSV/GHSA/abuse.ch volume, feed content coverage.
-    *   **tiger-eye** — companion dashboard for the Python enrichment pipeline (analysis volume, DLQ depth, model cost, latency).
-    *   **tiger-watch** — companion dashboard for the SBOM matching service (matches, advisories, version-range eval).
+    *   **TigerEye** (`tiger-eye`) — companion dashboard for the Python enrichment pipeline (analysis volume, DLQ depth, model cost, latency).
+    *   **TigerWatch** (`tiger-watch`) — companion dashboard for the SBOM matching service (matches, advisories, version-range eval).
 
 ## 🛠️ Build & Run
 
@@ -192,6 +171,7 @@ The `tigerfetch` service reads `env_file: .env` (see `docker-compose.yml`); thes
 
 ## 📚 Documentation
 
+*   [`docs/ENGINEERING_RATIONALE.md`](docs/ENGINEERING_RATIONALE.md): why TigerFetch uses Go, the migration background and naming compatibility.
 *   [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) — canonical architecture document: C1/C2/C3 views, data model, per-pipeline ingestion semantics, concurrency model, observability.
 *   [`docs/SOURCES-TIERED.md`](docs/SOURCES-TIERED.md) — tiered plan for intel sources beyond the core NVD / EPSS / KEV / RSS set. **Tier-1 complete** as of v1.4.0 (OSV / GHSA / URLhaus / ThreatFox / MalwareBazaar / Nuclei / MSF all shipped).
 *   [`docs/DATA_INSIGHTS.md`](docs/DATA_INSIGHTS.md) — analytical snapshots of the live lake: risk pyramid, sleeper-CVE patterns, threat velocity, weakness classes.

@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+#### TigerFetch product naming and documentation
+- Standardised the public product name as TigerFetch across the README and supporting documentation, with TigerBlue, TigerEye and TigerWatch described as the platform and companion services.
+- Reworked the README to lead with the ingestion service and its capabilities; moved the Rust-to-Go background into `docs/ENGINEERING_RATIONALE.md`.
+- Repository, module, database and deployment identifiers remain unchanged for compatibility.
+
 #### EPSS loads whole days from FIRST's archive — `internal/cve/epss.go`, `[epss]` config
 - The paginated API path left 28 September 2026 at 247,569 of ~380,000
   rows when a run died mid-way, and the "date already exists → skip"
