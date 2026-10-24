@@ -95,8 +95,8 @@ type GhsaConfig struct {
 
 // AbusechConfig controls the abuse.ch ingestors. abuse.ch unified all of
 // their feeds onto a single Auth-Key in 2024; APIKey is shared across the
-// three sub-runners. URLhaus' public CSV still works without auth so it
-// keeps running even when APIKey is empty.
+// three sub-runners. Since October 2026 URLhaus needs it too: its public
+// CSV was retired, and the runner errors (rather than skips) without a key.
 type AbusechConfig struct {
 	APIKey        string              `mapstructure:"api_key"`
 	URLhaus       UrlhausConfig       `mapstructure:"urlhaus"`
@@ -104,8 +104,10 @@ type AbusechConfig struct {
 	MalwareBazaar MalwareBazaarConfig `mapstructure:"malwarebazaar"`
 }
 
-// UrlhausConfig controls the URLhaus CSV ingestor. URL defaults to the
-// public `csv_recent` endpoint which covers the last few days of URLs.
+// UrlhausConfig controls the URLhaus ingestor. URL defaults to the
+// authenticated API's newest-1000 page (urlhaus-api.abuse.ch/v1/urls/recent/);
+// it needs AbusechConfig.APIKey like the other two abuse.ch feeds since the
+// public CSV was retired in October 2026.
 type UrlhausConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	PollInterval string `mapstructure:"poll_interval"`

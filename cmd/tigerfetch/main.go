@@ -246,7 +246,7 @@ func main() {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			runner := abusech.NewUrlhausRunner(pool, cfg.Abusech.URLhaus)
+			runner := abusech.NewUrlhausRunner(pool, cfg.Abusech.URLhaus, cfg.Abusech.APIKey)
 			interval, err := cfg.Abusech.URLhaus.GetPollDuration()
 			if err != nil || interval <= 0 {
 				slog.Warn("Invalid URLhaus poll interval, using default 1h", "error", err)

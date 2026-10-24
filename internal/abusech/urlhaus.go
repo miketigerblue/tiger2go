@@ -1,19 +1,17 @@
-// Package abusech ingests the public abuse.ch threat-intel feeds.
+// Package abusech ingests the abuse.ch threat-intel feeds: URLhaus,
+// ThreatFox and MalwareBazaar. All three sit behind the unified abuse.ch
+// Auth-Key (AbusechConfig.APIKey), issued per account at auth.abuse.ch.
 //
-// v1 ships URLhaus only because it's the one still available without an
-// API key. ThreatFox and MalwareBazaar moved to auth-required in 2024 and
-// will land as follow-ups once a key is configured (the package layout is
-// already prepared for that — see SOURCES-TIERED.md).
-//
-// URLhaus source: https://urlhaus.abuse.ch/downloads/csv_recent/
-// Schema: id, dateadded, url, url_status, last_online, threat, tags,
-// urlhaus_link, reporter  (CSV with comment lines starting with `#`)
+// URLhaus source: https://urlhaus-api.abuse.ch/v1/urls/recent/limit/<n>/
+// (GET, Auth-Key header, JSON). The public CSV at
+// urlhaus.abuse.ch/downloads/csv_recent/ that v1 of this runner read was
+// retired by abuse.ch in October 2026 (HTTP 410), and the runner failed
+// every hourly poll from the 21st until it moved here.
 package abusech
 
 import (
-	"bufio"
 	"context"
-	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,33 +25,45 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const defaultUrlhausURL = "https://urlhaus.abuse.ch/downloads/csv_recent/"
+// defaultUrlhausURL is the authenticated "recent additions" endpoint. 1000
+// is the largest page the API serves; URLhaus adds a few hundred to a few
+// thousand URLs a day, so an hourly poll of the newest 1000 keeps up.
+const defaultUrlhausURL = "https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/"
 
-// UrlhausRow mirrors one CSV row.
-type UrlhausRow struct {
-	ID          string
-	DateAdded   string
-	URL         string
-	URLStatus   string
-	LastOnline  string
-	Threat      string
-	Tags        string // comma-separated in the source
-	UrlhausLink string
-	Reporter    string
+// urlhausResponse is the envelope of /v1/urls/recent/.
+type urlhausResponse struct {
+	QueryStatus string            `json:"query_status"`
+	URLs        []urlhausAPIEntry `json:"urls"`
+}
+
+// urlhausAPIEntry is one URL as the API returns it. Only the fields the
+// table stores are declared; everything else is kept in `raw`.
+type urlhausAPIEntry struct {
+	ID               string   `json:"id"`
+	URL              string   `json:"url"`
+	URLStatus        string   `json:"url_status"`
+	DateAdded        string   `json:"date_added"`  // "2026-10-24 07:51:04 UTC"
+	LastOnline       string   `json:"last_online"` // not present on /recent/; kept if it ever is
+	Threat           string   `json:"threat"`
+	Reporter         string   `json:"reporter"`
+	UrlhausReference string   `json:"urlhaus_reference"`
+	Tags             []string `json:"tags"` // null when untagged
 }
 
 type UrlhausRunner struct {
 	db     *pgxpool.Pool
 	cfg    config.UrlhausConfig
+	apiKey string
 	client *http.Client
 }
 
-func NewUrlhausRunner(db *pgxpool.Pool, cfg config.UrlhausConfig) *UrlhausRunner {
+func NewUrlhausRunner(db *pgxpool.Pool, cfg config.UrlhausConfig, apiKey string) *UrlhausRunner {
 	return &UrlhausRunner{
-		db:  db,
-		cfg: cfg,
+		db:     db,
+		cfg:    cfg,
+		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: 120 * time.Second, // CSV can be a few MB
+			Timeout: 120 * time.Second,
 		},
 	}
 }
@@ -62,6 +72,11 @@ func (r *UrlhausRunner) Run(ctx context.Context) (retErr error) {
 	if !r.cfg.Enabled {
 		slog.Info("URLhaus ingestion disabled")
 		return nil
+	}
+	// An error rather than ThreatFox's quiet skip: URLhaus ran keyless for
+	// months, so a missing key here is a regression worth a red metric.
+	if r.apiKey == "" {
+		return fmt.Errorf("URLhaus API requires abusech.api_key (ABUSECH_API_KEY)")
 	}
 
 	start := time.Now()
@@ -83,17 +98,27 @@ func (r *UrlhausRunner) Run(ctx context.Context) (retErr error) {
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
+	req.Header.Set("Auth-Key", r.apiKey)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "tigerfetch/1.0 (+https://tigerblue.app)")
+
+	httpStart := time.Now()
 	resp, err := r.client.Do(req)
+	metrics.UpstreamRequestDuration.WithLabelValues("urlhaus").Observe(time.Since(httpStart).Seconds())
 	if err != nil {
 		return fmt.Errorf("fetch %s: %w", url, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("fetch %s: status %d — abuse.ch rejected the Auth-Key", url, resp.StatusCode)
+	default:
 		return fmt.Errorf("fetch %s: status %d", url, resp.StatusCode)
 	}
 
-	processed, err := r.ingestCSV(ctx, resp.Body)
+	processed, err := r.ingestJSON(ctx, resp.Body)
 	if err != nil {
 		return err
 	}
@@ -102,7 +127,26 @@ func (r *UrlhausRunner) Run(ctx context.Context) (retErr error) {
 	return nil
 }
 
-func (r *UrlhausRunner) ingestCSV(ctx context.Context, body io.Reader) (int, error) {
+// parseUrlhausResponse decodes the API envelope and returns its entries.
+// "no_results" is an empty page, not an error.
+func parseUrlhausResponse(body io.Reader) ([]urlhausAPIEntry, error) {
+	var out urlhausResponse
+	if err := json.NewDecoder(body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode URLhaus response: %w", err)
+	}
+	switch out.QueryStatus {
+	case "ok":
+		return out.URLs, nil
+	case "no_results":
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("URLhaus query_status %q", out.QueryStatus)
+	}
+}
+
+func (r *UrlhausRunner) ingestJSON(ctx context.Context, body io.Reader) (int, error) {
+	// last_online is COALESCEd because /recent/ does not carry it: a page
+	// that omits it must not blank a value an earlier load stored.
 	const upsertSQL = `
 		INSERT INTO urlhaus_urls (
 			id, url, url_status, threat, tags, date_added, last_online,
@@ -117,126 +161,59 @@ func (r *UrlhausRunner) ingestCSV(ctx context.Context, body io.Reader) (int, err
 			threat        = EXCLUDED.threat,
 			tags          = EXCLUDED.tags,
 			date_added    = EXCLUDED.date_added,
-			last_online   = EXCLUDED.last_online,
+			last_online   = COALESCE(EXCLUDED.last_online, urlhaus_urls.last_online),
 			urlhaus_link  = EXCLUDED.urlhaus_link,
 			reporter      = EXCLUDED.reporter,
 			raw           = EXCLUDED.raw,
 			last_seen_at  = now()
 		WHERE urlhaus_urls.url_status IS DISTINCT FROM EXCLUDED.url_status
-		   OR urlhaus_urls.last_online IS DISTINCT FROM EXCLUDED.last_online`
+		   OR (EXCLUDED.last_online IS NOT NULL
+		       AND urlhaus_urls.last_online IS DISTINCT FROM EXCLUDED.last_online)`
 
-	// The CSV has comment lines starting with `#` before the data — we need
-	// to strip them before handing the stream to encoding/csv.
-	filtered := stripComments(body)
-	reader := csv.NewReader(filtered)
-	// abuse.ch sometimes ships rows with stray commas inside tags fields
-	// already-quoted, so leave LazyQuotes off (strict) but be tolerant of
-	// variable field counts.
-	reader.FieldsPerRecord = -1
+	entries, err := parseUrlhausResponse(body)
+	if err != nil {
+		return 0, err
+	}
 
 	processed := 0
-	for {
+	for _, e := range entries {
 		select {
 		case <-ctx.Done():
 			return processed, ctx.Err()
 		default:
 		}
 
-		fields, err := reader.Read()
-		if err == io.EOF {
-			break
+		id, url := strings.TrimSpace(e.ID), strings.TrimSpace(e.URL)
+		if id == "" || url == "" {
+			continue
 		}
+		tags := e.Tags
+		if tags == nil {
+			tags = []string{}
+		}
+		raw, err := json.Marshal(e)
 		if err != nil {
-			slog.Warn("URLhaus CSV row skipped", "error", err)
-			continue
-		}
-		if len(fields) < 9 {
-			continue
-		}
-
-		row := UrlhausRow{
-			ID:          strings.TrimSpace(fields[0]),
-			DateAdded:   strings.TrimSpace(fields[1]),
-			URL:         strings.TrimSpace(fields[2]),
-			URLStatus:   strings.TrimSpace(fields[3]),
-			LastOnline:  strings.TrimSpace(fields[4]),
-			Threat:      strings.TrimSpace(fields[5]),
-			Tags:        strings.TrimSpace(fields[6]),
-			UrlhausLink: strings.TrimSpace(fields[7]),
-			Reporter:    strings.TrimSpace(fields[8]),
-		}
-		if row.ID == "" || row.URL == "" {
-			continue
+			return processed, fmt.Errorf("marshal %s: %w", id, err)
 		}
 
 		_, err = r.db.Exec(ctx, upsertSQL,
-			row.ID, row.URL, nilEmpty(row.URLStatus), nilEmpty(row.Threat),
-			splitTags(row.Tags),
-			parseTime(row.DateAdded), parseTime(row.LastOnline),
-			nilEmpty(row.UrlhausLink), nilEmpty(row.Reporter),
-			strings.Join(fields, ","),
+			id, url, nilEmpty(e.URLStatus), nilEmpty(e.Threat),
+			tags,
+			parseTime(e.DateAdded), parseTime(e.LastOnline),
+			nilEmpty(e.UrlhausReference), nilEmpty(e.Reporter),
+			string(raw),
 		)
 		if err != nil {
-			return processed, fmt.Errorf("upsert %s: %w", row.ID, err)
+			return processed, fmt.Errorf("upsert %s: %w", id, err)
 		}
 		processed++
 	}
 	return processed, nil
 }
 
-// stripComments wraps an io.Reader to elide any line that begins with `#`.
-// Used to strip the abuse.ch banner before csv.Reader sees the stream.
-func stripComments(in io.Reader) io.Reader {
-	pr, pw := io.Pipe()
-	go func() {
-		defer func() { _ = pw.Close() }()
-		s := bufio.NewScanner(in)
-		// Default scanner buffer is 64KB; URLhaus rows are short but allow
-		// for some long URLs/tags.
-		s.Buffer(make([]byte, 64*1024), 1024*1024)
-		for s.Scan() {
-			line := s.Bytes()
-			if len(line) > 0 && line[0] == '#' {
-				continue
-			}
-			if _, err := pw.Write(line); err != nil {
-				_ = pw.CloseWithError(err)
-				return
-			}
-			if _, err := pw.Write([]byte{'\n'}); err != nil {
-				_ = pw.CloseWithError(err)
-				return
-			}
-		}
-		if err := s.Err(); err != nil {
-			_ = pw.CloseWithError(err)
-		}
-	}()
-	return pr
-}
-
-// splitTags converts a comma-separated tag list into a clean []string,
-// trimming whitespace and dropping empties. Returns empty (not nil) so
-// the upsert receives a valid text[] value.
-func splitTags(s string) []string {
-	if s == "" {
-		return []string{}
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		t := strings.TrimSpace(p)
-		if t == "" {
-			continue
-		}
-		out = append(out, t)
-	}
-	return out
-}
-
 // parseTime accepts the three timestamp shapes abuse.ch returns:
-//   - "2026-05-16 16:58:18"      (URLhaus + MalwareBazaar)
-//   - "2026-05-16 18:46:11 UTC"  (ThreatFox — trailing TZ abbreviation)
+//   - "2026-05-16 16:58:18"      (MalwareBazaar)
+//   - "2026-05-16 18:46:11 UTC"  (URLhaus API, ThreatFox — trailing TZ abbreviation)
 //   - RFC3339 variants           (used elsewhere in the package)
 //
 // Returns nil for empty / unparseable.
@@ -245,8 +222,8 @@ func parseTime(s string) *time.Time {
 		return nil
 	}
 	for _, layout := range []string{
-		"2006-01-02 15:04:05 MST", // ThreatFox: "... UTC" suffix
-		"2006-01-02 15:04:05",     // URLhaus, MalwareBazaar
+		"2006-01-02 15:04:05 MST", // URLhaus API, ThreatFox: "... UTC" suffix
+		"2006-01-02 15:04:05",     // MalwareBazaar
 		time.RFC3339Nano,
 		time.RFC3339,
 	} {
