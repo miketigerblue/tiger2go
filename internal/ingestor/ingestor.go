@@ -42,13 +42,13 @@ func (c *Client) FetchAndSave(ctx context.Context, feedCfg config.Feed) (retErr 
 		}
 	}()
 
-	opCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
+	fetchCtx, cancelFetch := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelFetch()
 
 	slog.Debug("Fetching feed", "url", feedCfg.URL)
 
 	httpStart := time.Now()
-	feed, err := c.pf.ParseURLWithContext(feedCfg.URL, opCtx)
+	feed, err := c.pf.ParseURLWithContext(feedCfg.URL, fetchCtx)
 	metrics.UpstreamRequestDuration.WithLabelValues("feed").Observe(time.Since(httpStart).Seconds())
 	if err != nil {
 		return fmt.Errorf("failed to parse feed %s: %w", feedCfg.URL, err)
@@ -56,10 +56,18 @@ func (c *Client) FetchAndSave(ctx context.Context, feedCfg config.Feed) (retErr 
 
 	slog.Info("Fetched feed success", "title", feed.Title, "items", len(feed.Items), "url", feedCfg.URL)
 
+	// Processing gets its own deadline, sized to the feed. Each item is a
+	// transaction of two statements; sharing the 30s fetch deadline meant
+	// Microsoft's 5,000-item MSRC feed was cut off around item 1,800 every
+	// hour and the rest logged as "context deadline exceeded" (330k item
+	// failures in the week to 2026-10-24, all MSRC).
+	procCtx, cancelProc := context.WithTimeout(ctx, processDeadline(len(feed.Items)))
+	defer cancelProc()
+
 	processed := 0
 	failed := 0
 	for _, item := range feed.Items {
-		if err := c.processItem(opCtx, feedCfg, feed, item); err != nil {
+		if err := c.processItem(procCtx, feedCfg, feed, item); err != nil {
 			slog.Error("Failed to process item", "guid", item.GUID, "error", err)
 			failed++
 			continue
@@ -73,6 +81,17 @@ func (c *Client) FetchAndSave(ctx context.Context, feedCfg config.Feed) (retErr 
 	slog.Info("Processed items", "count", processed, "feed", feedCfg.Name)
 
 	return nil
+}
+
+// processDeadline is 30s plus 50ms per item, capped at 10 minutes. Items
+// run at roughly 15ms each through pgbouncer, so this is about three times
+// what a feed needs while still bounding a stuck one.
+func processDeadline(items int) time.Duration {
+	d := 30*time.Second + time.Duration(items)*50*time.Millisecond
+	if d > 10*time.Minute {
+		return 10 * time.Minute
+	}
+	return d
 }
 
 func (c *Client) processItem(ctx context.Context, feedCfg config.Feed, feed *gofeed.Feed, item *gofeed.Item) error {

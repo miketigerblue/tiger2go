@@ -1,47 +1,76 @@
 package abusech
 
 import (
-	"io"
-	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestStripComments(t *testing.T) {
-	in := strings.NewReader("# banner\n# another comment\n\"1\",\"2026-01-01 00:00:00\",\"http://x\",\"online\",\"\",\"malware_download\",\"tag1,tag2\",\"link\",\"rep\"\n# trailing\n\"2\",\"2026-01-02\",\"http://y\",\"offline\",\"\",\"\",\"\",\"\",\"\"\n")
-	out, err := io.ReadAll(stripComments(in))
+// sampleRecent is the shape /v1/urls/recent/ returns: string ids, a
+// "YYYY-MM-DD HH:MM:SS UTC" date_added, tags as an array or null, and no
+// last_online field at all.
+const sampleRecent = `{"query_status":"ok","urls":[
+ {"id":"3717331","urlhaus_reference":"https://urlhaus.abuse.ch/url/3717331/","url":"http://203.0.113.9/bins/mozi.m",
+  "url_status":"online","host":"203.0.113.9","date_added":"2026-10-24 07:51:04 UTC","threat":"malware_download",
+  "blacklists":{"spamhaus_dbl":"not listed","surbl":"not listed"},"reporter":"abuse_ch","larted":"true",
+  "takedown_time_seconds":null,"tags":["elf","Mozi"]},
+ {"id":"3717330","urlhaus_reference":"https://urlhaus.abuse.ch/url/3717330/","url":"http://198.51.100.4/x.exe",
+  "url_status":"offline","host":"198.51.100.4","date_added":"2026-10-24 07:50:59 UTC","threat":"malware_download",
+  "blacklists":{},"reporter":"someone","larted":"false","takedown_time_seconds":"120","tags":null}
+]}`
+
+func TestParseUrlhausResponse(t *testing.T) {
+	entries, err := parseUrlhausResponse(strings.NewReader(sampleRecent))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := string(out)
-	if strings.Contains(got, "#") {
-		t.Fatalf("expected comments stripped, got:\n%s", got)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
 	}
-	if !strings.Contains(got, "http://x") || !strings.Contains(got, "http://y") {
-		t.Fatalf("expected data rows preserved, got:\n%s", got)
+	e := entries[0]
+	if e.ID != "3717331" || e.URL != "http://203.0.113.9/bins/mozi.m" || e.URLStatus != "online" {
+		t.Fatalf("unexpected first entry: %+v", e)
+	}
+	if len(e.Tags) != 2 || e.Tags[1] != "Mozi" {
+		t.Fatalf("tags not decoded: %v", e.Tags)
+	}
+	if entries[1].Tags != nil {
+		t.Fatalf("null tags should decode to nil, got %v", entries[1].Tags)
+	}
+	if ts := parseTime(e.DateAdded); ts == nil || ts.Hour() != 7 || ts.Minute() != 51 {
+		t.Fatalf("date_added did not parse: %q -> %v", e.DateAdded, ts)
+	}
+	if entries[1].LastOnline != "" || parseTime(entries[1].LastOnline) != nil {
+		t.Fatal("absent last_online must stay empty / nil")
 	}
 }
 
-func TestSplitTags(t *testing.T) {
-	cases := []struct {
-		in   string
-		want []string
-	}{
-		{"", []string{}},
-		{"a,b,c", []string{"a", "b", "c"}},
-		{"a, b , c", []string{"a", "b", "c"}},
-		{",,a,,b,,", []string{"a", "b"}},
-		{"single", []string{"single"}},
+func TestParseUrlhausResponse_NoResultsIsEmpty(t *testing.T) {
+	entries, err := parseUrlhausResponse(strings.NewReader(`{"query_status":"no_results","urls":null}`))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("no_results should be an empty page, got %v / %v", entries, err)
 	}
-	for _, tc := range cases {
-		got := splitTags(tc.in)
-		if !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("splitTags(%q) = %v, want %v", tc.in, got, tc.want)
+}
+
+func TestParseUrlhausResponse_OtherStatusIsAnError(t *testing.T) {
+	for _, body := range []string{
+		`{"query_status":"http_get_expected"}`,
+		`{"query_status":"unauthorized"}`,
+		`not json`,
+	} {
+		if _, err := parseUrlhausResponse(strings.NewReader(body)); err == nil {
+			t.Fatalf("expected an error for %q", body)
 		}
 	}
 }
 
-func TestParseTime_UrlhausFormat(t *testing.T) {
+func TestParseTime_UrlhausAPIFormat(t *testing.T) {
+	got := parseTime("2026-10-24 07:51:04 UTC")
+	if got == nil || got.Year() != 2026 || got.Month() != 10 || got.Day() != 24 || got.Hour() != 7 {
+		t.Fatalf("unexpected: %v", got)
+	}
+}
+
+func TestParseTime_MalwareBazaarFormat(t *testing.T) {
 	got := parseTime("2026-05-16 16:58:18")
 	if got == nil {
 		t.Fatal("expected non-nil")

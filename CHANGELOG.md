@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+#### URLhaus moved to the authenticated API — `internal/abusech/urlhaus.go`
+- abuse.ch retired the public CSV (`urlhaus.abuse.ch/downloads/csv_recent/`,
+  HTTP 410) around 21 October 2026; the runner failed every hourly poll
+  from then on (64 in a row by the 24th) and `urlhaus_urls` stopped
+  growing. It now reads `urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/`
+  with the shared `Auth-Key` (`ABUSECH_API_KEY`), the same key ThreatFox
+  and MalwareBazaar already use, and parses JSON instead of CSV.
+- A missing key is an error (red `tigerfetch_urlhaus_fetches_total`), not
+  a quiet skip: this feed ran keyless for months and a silent stop is the
+  failure that just happened.
+- `/recent/` carries no `last_online`, so the upsert keeps a stored value
+  rather than blanking it. `raw` now holds the API entry as JSON.
+
+#### Feed processing gets its own deadline — `internal/ingestor/ingestor.go`
+- Fetch and per-item processing shared one 30-second context. Microsoft's
+  MSRC feed ships ~5,000 items per fetch at ~15 ms each, so every hourly
+  run was cut off around item 1,800 with the rest logged as `context
+  deadline exceeded`: 329,957 item failures in the week to 24 October,
+  all MSRC. Any new advisory past the cut-off waited for a later run.
+- Processing now runs under 30 s + 50 ms per item, capped at 10 minutes
+  (MSRC ≈ 4.7 min); the fetch keeps its 30 s.
+
 ### Added
 
 #### NVD modification pass — `internal/cve/nvd.go`, `nvd.modified_since`

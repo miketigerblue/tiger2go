@@ -517,7 +517,8 @@ poll_interval = "24h"
 [abusech.urlhaus]
 enabled       = true
 poll_interval = "1h"
-# url defaults to https://urlhaus.abuse.ch/downloads/csv_recent/
+# url defaults to https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/
+# (needs abusech.api_key — the public CSV was retired in October 2026)
 
 [abusech.threatfox]
 enabled       = true

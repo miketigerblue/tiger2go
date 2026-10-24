@@ -390,7 +390,7 @@ FOR VALUES FROM ('2026-03-01') TO ('2026-04-01')
 ### 4.7 abuse.ch Pipeline (URLhaus / ThreatFox / MalwareBazaar)
 
 ```
-  urlhaus.abuse.ch/downloads/csv_recent/        UrlhausRunner       urlhaus_urls
+  urlhaus-api.abuse.ch/v1/urls/recent/ (Auth-Key) UrlhausRunner     urlhaus_urls
   threatfox-api.abuse.ch/api/v1/                ThreatfoxRunner --> threatfox_iocs
   mb-api.abuse.ch/api/v1/                       MalwarebazaarRunner malwarebazaar_samples
 
