@@ -1,15 +1,17 @@
 package abusech
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
 
-// sampleRecent is the shape /v1/urls/recent/ returns: string ids, a
-// "YYYY-MM-DD HH:MM:SS UTC" date_added, tags as an array or null, and no
-// last_online field at all.
+// sampleRecent is the shape /v1/urls/recent/ returns: a numeric id (the
+// live API sent 3717331, not "3717331" — the first deploy of the JSON
+// runner failed on exactly that), a "YYYY-MM-DD HH:MM:SS UTC" date_added,
+// tags as an array or null, and no last_online field at all.
 const sampleRecent = `{"query_status":"ok","urls":[
- {"id":"3717331","urlhaus_reference":"https://urlhaus.abuse.ch/url/3717331/","url":"http://203.0.113.9/bins/mozi.m",
+ {"id":3717331,"urlhaus_reference":"https://urlhaus.abuse.ch/url/3717331/","url":"http://203.0.113.9/bins/mozi.m",
   "url_status":"online","host":"203.0.113.9","date_added":"2026-10-24 07:51:04 UTC","threat":"malware_download",
   "blacklists":{"spamhaus_dbl":"not listed","surbl":"not listed"},"reporter":"abuse_ch","larted":"true",
   "takedown_time_seconds":null,"tags":["elf","Mozi"]},
@@ -41,6 +43,35 @@ func TestParseUrlhausResponse(t *testing.T) {
 	}
 	if entries[1].LastOnline != "" || parseTime(entries[1].LastOnline) != nil {
 		t.Fatal("absent last_online must stay empty / nil")
+	}
+}
+
+func TestAsString(t *testing.T) {
+	cases := []struct {
+		in   any
+		want string
+	}{
+		{"abc", "abc"}, {nil, ""}, {true, "true"}, {false, "false"},
+		{float64(3717331), "3717331"}, {float64(2.5), "2.5"},
+		{json.Number("3717331"), "3717331"},
+	}
+	for _, c := range cases {
+		if got := asString(c.in); got != c.want {
+			t.Errorf("asString(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestEntryFromRaw_ToleratesScalarTypes(t *testing.T) {
+	e, err := entryFromRaw(json.RawMessage(`{"id":42,"url":"http://x","url_status":null,"threat":"malware_download","reporter":"r","tags":["a",7,null],"larted":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.ID != "42" || e.URL != "http://x" || e.URLStatus != "" || len(e.Tags) != 2 || e.Tags[1] != "7" {
+		t.Fatalf("unexpected: %+v", e)
+	}
+	if !strings.Contains(string(e.Raw), `"larted":true`) {
+		t.Fatal("raw must keep the whole object")
 	}
 }
 
