@@ -10,6 +10,7 @@
 package abusech
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,24 +31,81 @@ import (
 // thousand URLs a day, so an hourly poll of the newest 1000 keeps up.
 const defaultUrlhausURL = "https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/"
 
-// urlhausResponse is the envelope of /v1/urls/recent/.
+// urlhausResponse is the envelope of /v1/urls/recent/. Entries are kept
+// as raw objects: the API is loose about scalar types (`id` arrives as a
+// JSON number, other fields as strings or null), so each field is read
+// through asString rather than a typed struct that one drift would break.
 type urlhausResponse struct {
 	QueryStatus string            `json:"query_status"`
-	URLs        []urlhausAPIEntry `json:"urls"`
+	URLs        []json.RawMessage `json:"urls"`
 }
 
-// urlhausAPIEntry is one URL as the API returns it. Only the fields the
-// table stores are declared; everything else is kept in `raw`.
+// urlhausAPIEntry is one URL as the API returns it, normalised to strings.
+// Only the fields the table stores are declared; the full object is kept
+// in `raw`.
 type urlhausAPIEntry struct {
-	ID               string   `json:"id"`
-	URL              string   `json:"url"`
-	URLStatus        string   `json:"url_status"`
-	DateAdded        string   `json:"date_added"`  // "2026-10-24 07:51:04 UTC"
-	LastOnline       string   `json:"last_online"` // not present on /recent/; kept if it ever is
-	Threat           string   `json:"threat"`
-	Reporter         string   `json:"reporter"`
-	UrlhausReference string   `json:"urlhaus_reference"`
-	Tags             []string `json:"tags"` // null when untagged
+	ID               string
+	URL              string
+	URLStatus        string
+	DateAdded        string // "2026-10-24 07:51:04 UTC"
+	LastOnline       string // not present on /recent/; kept if it ever is
+	Threat           string
+	Reporter         string
+	UrlhausReference string
+	Tags             []string // nil when untagged
+	Raw              json.RawMessage
+}
+
+// asString renders a JSON scalar the way the table wants it: strings as
+// they are, whole numbers without a decimal point, bools as true/false,
+// null and anything else as "".
+func asString(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case json.Number:
+		return x.String()
+	case float64:
+		if x == float64(int64(x)) {
+			return fmt.Sprintf("%d", int64(x))
+		}
+		return fmt.Sprintf("%v", x)
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	default:
+		return ""
+	}
+}
+
+func entryFromRaw(raw json.RawMessage) (urlhausAPIEntry, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		return urlhausAPIEntry{}, err
+	}
+	e := urlhausAPIEntry{
+		ID:               asString(m["id"]),
+		URL:              asString(m["url"]),
+		URLStatus:        asString(m["url_status"]),
+		DateAdded:        asString(m["date_added"]),
+		LastOnline:       asString(m["last_online"]),
+		Threat:           asString(m["threat"]),
+		Reporter:         asString(m["reporter"]),
+		UrlhausReference: asString(m["urlhaus_reference"]),
+		Raw:              raw,
+	}
+	if tags, ok := m["tags"].([]any); ok {
+		for _, t := range tags {
+			if s := asString(t); s != "" {
+				e.Tags = append(e.Tags, s)
+			}
+		}
+	}
+	return e, nil
 }
 
 type UrlhausRunner struct {
@@ -136,12 +194,20 @@ func parseUrlhausResponse(body io.Reader) ([]urlhausAPIEntry, error) {
 	}
 	switch out.QueryStatus {
 	case "ok":
-		return out.URLs, nil
 	case "no_results":
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("URLhaus query_status %q", out.QueryStatus)
 	}
+	entries := make([]urlhausAPIEntry, 0, len(out.URLs))
+	for i, raw := range out.URLs {
+		e, err := entryFromRaw(raw)
+		if err != nil {
+			return nil, fmt.Errorf("decode URLhaus entry %d: %w", i, err)
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
 }
 
 func (r *UrlhausRunner) ingestJSON(ctx context.Context, body io.Reader) (int, error) {
@@ -191,17 +257,13 @@ func (r *UrlhausRunner) ingestJSON(ctx context.Context, body io.Reader) (int, er
 		if tags == nil {
 			tags = []string{}
 		}
-		raw, err := json.Marshal(e)
-		if err != nil {
-			return processed, fmt.Errorf("marshal %s: %w", id, err)
-		}
 
-		_, err = r.db.Exec(ctx, upsertSQL,
+		_, err := r.db.Exec(ctx, upsertSQL,
 			id, url, nilEmpty(e.URLStatus), nilEmpty(e.Threat),
 			tags,
 			parseTime(e.DateAdded), parseTime(e.LastOnline),
 			nilEmpty(e.UrlhausReference), nilEmpty(e.Reporter),
-			string(raw),
+			string(e.Raw),
 		)
 		if err != nil {
 			return processed, fmt.Errorf("upsert %s: %w", id, err)
